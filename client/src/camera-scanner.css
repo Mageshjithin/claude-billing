@@ -1,0 +1,85 @@
+.camera-scan-button {
+  background: #f1e8ee !important;
+  color: #71425e !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.scanner-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: #21151dcc;
+}
+
+.scanner-dialog {
+  width: min(480px, 100%);
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 60px #160c1440;
+}
+
+.scanner-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.scanner-heading h2 {
+  margin: 0;
+  color: #352c36;
+  font-size: 17px;
+}
+
+#billing-camera-reader {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 9px;
+}
+
+#billing-camera-reader video {
+  width: 100% !important;
+  height: auto !important;
+}
+
+.scanner-hint {
+  margin: 13px 0 0;
+  color: #837a83;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.camera-error {
+  margin-top: 13px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (max-width: 470px) {
+  .scan-box {
+    gap: 6px;
+    padding: 0 7px;
+  }
+
+  .camera-scan-button {
+    padding: 7px 8px !important;
+  }
+
+  .camera-scan-button span {
+    display: none;
+  }
+
+  .scanner-dialog {
+    padding: 15px;
+  }
+}
