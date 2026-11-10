@@ -14,6 +14,8 @@ router.get('/summary', async (_req, res, next) => {
       todayBills: today.length,
       productCount: active.length,
       lowStock: active.filter((p) => p.stock <= 5).length,
+      inventoryUnits: active.reduce((sum, p) => sum + Math.max(0, Number(p.stock) || 0), 0),
+      inventoryValue: Math.round(active.reduce((sum, p) => sum + (Number(p.price) || 0) * Math.max(0, Number(p.stock) || 0), 0) * 100) / 100,
       billCount: bills.filter((b) => b.status !== 'Cancelled').length,
     } });
   } catch (error) { next(error); }
