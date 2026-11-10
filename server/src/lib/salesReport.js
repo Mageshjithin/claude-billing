@@ -64,8 +64,13 @@ export function salesReport(bills, query = {}, products = []) {
   const amounts = row => {for (const key of ['subtotal','discount','tax','sales','profit','profitSales']) row[key] /= 100;return row;};
   const totalPages = Math.max(1,Math.ceil(matching.length / limit));
   const page = Math.min(requestedPage,totalPages);
-  const billsPage = matching.slice((page-1)*limit,page*limit).map(b => { const profit = b.status === 'Cancelled' ? null : profitCentsOf(b, costById); return {...b, profit: profit === null ? null : profit / 100}; });
+  const marginOf = (profit, sales) => sales > 0 ? Math.round(profit / sales * 1000) / 10 : null;
+  const billsPage = matching.slice((page-1)*limit,page*limit).map(b => {
+    const profit = b.status === 'Cancelled' ? null : profitCentsOf(b, costById);
+    if (profit === null) return {...b, profit: null, profitMargin: null};
+    return {...b, profit: profit / 100, profitMargin: marginOf(profit, cents(b.subtotal) - cents(b.discount))};
+  });
   amounts(summary);
-  summary.profitMargin = summary.profitSales > 0 ? Math.round(summary.profit / summary.profitSales * 1000) / 10 : null;
-  return {bills:billsPage, page, limit, total:matching.length,totalPages,summary,groups:[...groups.values()].sort((a,b)=>b.period.localeCompare(a.period)).map(amounts),paymentGroups:[...paymentGroups.values()].map(row=>({...row,sales:row.sales/100})).sort((a,b)=>a.paymentMethod.localeCompare(b.paymentMethod)),timeZone:'Asia/Kolkata'};
+  summary.profitMargin = marginOf(summary.profit, summary.profitSales);
+  return {bills:billsPage, page, limit, total:matching.length,totalPages,summary,groups:[...groups.values()].sort((a,b)=>b.period.localeCompare(a.period)).map(row=>{amounts(row);row.profitMargin=marginOf(row.profit,row.profitSales);return row;}),paymentGroups:[...paymentGroups.values()].map(row=>({...row,sales:row.sales/100})).sort((a,b)=>a.paymentMethod.localeCompare(b.paymentMethod)),timeZone:'Asia/Kolkata'};
 }

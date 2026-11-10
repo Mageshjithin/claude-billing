@@ -23,11 +23,15 @@ test('profit = amount after discount (before GST) minus cost of items sold', () 
   ];
   const report = salesReport(bills, {}, products);
   const byId = Object.fromEntries(report.bills.map(b => [b._id, b.profit]));
+  const marginById = Object.fromEntries(report.bills.map(b => [b._id, b.profitMargin]));
   assert.equal(byId.A, 600);   // 2000 - 2*700
   assert.equal(byId.B, 300);   // 1000 - 100 discount - 600 cost; GST is not income
   assert.equal(byId.C, null);
   assert.equal(byId.D, null);
   assert.equal(byId.E, null);
+  assert.equal(marginById.A, 30);   // 600 / 2000
+  assert.equal(marginById.B, 33.3); // 300 / 900 (after discount, before GST)
+  assert.equal(marginById.C, null);
   assert.equal(report.summary.profit, 900);
   assert.equal(report.summary.profitBills, 2);
   assert.equal(report.summary.billCount, 4);
@@ -35,6 +39,7 @@ test('profit = amount after discount (before GST) minus cost of items sold', () 
   assert.equal(report.summary.profitMargin, 31);  // 900 / 2900 = 31.0%
   assert.equal(report.groups[0].profit, 900);
   assert.equal(report.groups[0].profitBills, 2);
+  assert.equal(report.groups[0].profitMargin, 31);
 });
 
 test('zero cost is a real cost, and no costed bills gives no margin', () => {
