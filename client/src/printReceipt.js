@@ -6,27 +6,35 @@ const receiptCss = `
   html, body { margin: 0; padding: 0; background: white; color: black; }
   body { width: 70.2mm; font: 11px/1.35 Arial, sans-serif; }
   .invoice-paper { width: 100%; overflow-wrap: anywhere; }
-  .invoice-brand { text-align: center; border-bottom: 1px dashed black; padding-bottom: 8px; }
+  .invoice-brand { text-align: center; border-bottom: 1px dashed black; padding-bottom: 6px; }
   .brand-mark { display: none; }
-  h2 { font-size: 18px; margin: 0; }
-  .invoice-brand p { font-size: 10px; margin: 3px 0 0; }
-  .invoice-meta { display: grid; gap: 5px; padding: 8px 0; }
-  .invoice-meta > div { display: grid; gap: 1px; }
-  .invoice-meta small { font-size: 9px; }
+  h2 { font-size: 20px; margin: 0; letter-spacing: 1px; }
+  .invoice-brand p { font-size: 10px; margin: 2px 0 0; }
+  .gst-line { font-weight: 700; }
+  .receipt-title { text-align: center; font-weight: 700; font-size: 13px; letter-spacing: 1px; margin: 6px 0; padding-bottom: 5px; border-bottom: 1px dashed black; }
+  .invoice-meta { display: grid; gap: 2px; padding: 0 0 6px; }
+  .invoice-meta > div { display: flex; gap: 4px; }
+  .invoice-meta span { min-width: 15mm; }
+  .invoice-meta b { font-weight: 400; }
   table { width: 100%; table-layout: fixed; border-collapse: collapse; font: inherit; }
-  th, td { padding: 5px 2px; vertical-align: top; border-bottom: 1px dashed #777; }
-  th { font-size: 9px; }
-  th:first-child, td:first-child { width: 40%; text-align: left; }
-  th:nth-child(2), td:nth-child(2) { width: 10%; text-align: right; }
-  th:nth-child(3), td:nth-child(3) { width: 23%; text-align: right; }
-  th:nth-child(4), td:nth-child(4) { width: 27%; text-align: right; }
-  td small { display: block; font-size: 9px; margin-top: 2px; }
+  th, td { padding: 3px 1px; vertical-align: top; }
+  th { font-size: 9px; text-align: left; border-top: 1px dashed black; border-bottom: 1px dashed black; }
+  .invoice-items th:nth-child(1), .invoice-items td:nth-child(1) { width: 9%; }
+  .invoice-items th:nth-child(2), .invoice-items td:nth-child(2) { width: 40%; text-align: left; }
+  .invoice-items th:nth-child(3), .invoice-items td:nth-child(3) { width: 9%; text-align: right; }
+  .invoice-items th:nth-child(4), .invoice-items td:nth-child(4) { width: 18%; text-align: right; }
+  .invoice-items th:nth-child(5), .invoice-items td:nth-child(5) { width: 24%; text-align: right; }
+  td small { display: block; font-size: 9px; margin-top: 1px; }
   thead { display: table-header-group; }
-  tr, .invoice-brand, .invoice-meta, .invoice-totals, .thankyou { break-inside: avoid; }
-  .invoice-totals { display: grid; gap: 5px; margin-top: 8px; }
+  tr, .invoice-brand, .invoice-meta, .invoice-totals, .thankyou, .tax-table { break-inside: avoid; }
+  .receipt-total { display: flex; justify-content: space-between; font-weight: 700; border-top: 1px dashed black; border-bottom: 1px dashed black; margin-top: 4px; padding: 3px 1px; }
+  .invoice-totals { display: grid; gap: 3px; margin-top: 6px; }
   .invoice-totals > div { display: flex; justify-content: space-between; gap: 6px; }
-  .invoice-grand { border-top: 1px dashed black; padding-top: 6px; font-size: 13px; }
-  .thankyou { text-align: center; font-size: 10px; margin: 10px 0 0; }
+  .invoice-grand { border-top: 1px dashed black; border-bottom: 1px dashed black; padding: 4px 0; font-size: 14px; font-weight: 700; }
+  .tax-table { margin-top: 8px; border-top: 1px dashed black; border-bottom: 1px dashed black; font-size: 9px; }
+  .tax-table th { border: 0; border-bottom: 1px dashed black; }
+  .tax-table th:not(:first-child), .tax-table td:not(:first-child) { text-align: right; }
+  .thankyou { text-align: center; font-weight: 700; font-size: 10px; margin: 8px 0 0; }
 `;
 
 export async function prepareReceiptPrint(receipt) {
