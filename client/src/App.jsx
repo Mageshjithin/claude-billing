@@ -39,7 +39,7 @@ function App() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [discount, setDiscount] = useState('0');
-  const [gstPercent, setGstPercent] = useState('0');
+  const [gstPercent, setGstPercent] = useState('5');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [amountReceived, setAmountReceived] = useState('');
   const [busy, setBusy] = useState(false);
@@ -133,7 +133,7 @@ function App() {
         billingMode: isManual ? 'manual' : 'inventory',
         gstPercent: Math.max(0, Number(gstPercent) || 0), items: isManual ? manualCart.map(item => ({ name: item.name.trim(), quantity: Number(item.quantity), rate: Number(item.rate) })) : cart.map((x) => ({ productId: x._id, quantity: x.quantity })),
       }) });
-      setLastBill(result.bill); setAmountReceived(''); setPaymentMethod('Cash'); if (isManual) setManualCart([{ name: '', quantity: '1', rate: '' }]); else setCart([]); setCustomerName(''); setCustomerPhone(''); setDiscount('0');
+      setLastBill(result.bill); setAmountReceived(''); setPaymentMethod('Cash'); if (isManual) setManualCart([{ name: '', quantity: '1', rate: '' }]); else setCart([]); setCustomerName(''); setCustomerPhone(''); setDiscount('0'); setGstPercent('5');
       setMessage(isManual ? `Manual bill ${result.bill.invoiceNo} saved.` : `Bill ${result.bill.invoiceNo} saved. Stock has been updated.`); await load();
     } catch (e) { await load(); setError(e.message); }
     finally { setBusy(false); }
