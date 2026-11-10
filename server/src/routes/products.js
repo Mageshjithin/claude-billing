@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { loadData, transaction, httpError } from '../db.js';
 
 const router = Router();
-const editable = ['name', 'sku', 'barcode', 'category', 'price', 'stock', 'active'];
+const editable = ['name', 'sku', 'barcode', 'category', 'price', 'costPrice', 'stock', 'active'];
+const twoDecimals = (n) => Math.abs(n * 100 - Math.round(n * 100)) <= 0.00001;
 const pick = (body,  keys) => Object.fromEntries(Object.entries(body || {}).filter(([key]) => keys.includes(key)));
 
 function clean(p) {
@@ -17,7 +18,13 @@ function clean(p) {
     stock: Number(p.stock),
     active: p.active !== false && p.active !== 'false',
   };
-  if (!product.name || product.name.length > 120 || !product.sku || !Number.isFinite(product.price) || product.price < 0 || product.price > 100000000 || Math.abs(product.price * 100 - Math.round(product.price * 100)) > 0.00001 || !Number.isInteger(product.stock) || product.stock < 0) {
+  // Cost price is optional: blank or missing clears it, anything else must be a valid amount.
+  const hasCost = p.costPrice !== undefined && p.costPrice !== null && String(p.costPrice).trim() !== '';
+  product.costPrice = hasCost ? Number(p.costPrice) : undefined;
+  if (hasCost && (!['number', 'string'].includes(typeof p.costPrice) || !Number.isFinite(product.costPrice) || product.costPrice < 0 || product.costPrice > 100000000 || !twoDecimals(product.costPrice))) {
+    throw httpError(400, 'Cost price must be a valid amount with up to two decimal places.');
+  }
+  if (!product.name || product.name.length > 120 || !product.sku || !Number.isFinite(product.price) || product.price < 0 || product.price > 100000000 || !twoDecimals(product.price) || !Number.isInteger(product.stock) || product.stock < 0) {
     throw httpError(400, 'Enter a product name, SKU, valid price and whole-number stock.');
   }
   return product;
