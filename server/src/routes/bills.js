@@ -11,8 +11,8 @@ const money = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 router.get('/', async (req, res, next) => {
   try {
-    const { bills } = await loadData();
-    res.json(salesReport(bills, req.query));
+    const { bills, products } = await loadData();
+    res.json(salesReport(bills, req.query, products));
   } catch (error) { next(error); }
 });
 
@@ -66,7 +66,7 @@ router.post('/', async (req, res, next) => {
         if (product.stock < quantity) throw httpError(409, `Not enough stock for ${product.name}. Refresh stock and try again.`);
         product.stock -= quantity;
         product.updatedAt = now;
-        items.push({ productId, name: product.name, sku: product.sku, quantity, unitPrice: product.price, lineTotal: money(product.price * quantity) });
+        items.push({ productId, name: product.name, sku: product.sku, quantity, unitPrice: product.price, ...(typeof product.costPrice === 'number' ? { unitCost: product.costPrice } : {}), lineTotal: money(product.price * quantity) });
       }
 
       const subtotal = money(items.reduce((sum, item) => sum + item.lineTotal, 0));
