@@ -221,6 +221,7 @@ function App() {
             <Stat icon={ReceiptText} label="Bills today" value={summary?.todayBills || 0} note="Successful checkouts" tone="peach"/>
             <Stat icon={Package} label="Products in stock" value={summary?.productCount || 0} note="Active products" tone="sage"/>
             <Stat icon={AlertTriangle} label="Low stock items" value={summary?.lowStock || 0} note="5 units or fewer" tone="gold"/>
+            <Stat icon={Package} label="Inventory value" value={money(summary?.inventoryValue)} note={`${summary?.inventoryUnits || 0} units at selling price`} tone="plum"/>
           </div>
           <div className="overview-grid">
             <section className="panel recent-panel"><div className="panel-heading"><div><h3>Recent bills</h3><p>Your latest customer checkouts</p></div><div className="inventory-actions"><button className="text-button" onClick={() => setPage('Sales history')}>View all <ArrowDownToLine size={15}/></button></div></div><BillTable bills={bills.slice(0, 5)} onSelect={setLastBill} onDelete={voidBill} busy={busy}/></section>
