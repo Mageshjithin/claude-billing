@@ -209,15 +209,14 @@ function App() {
   }
 
   async function voidBill(bill) {
-    if (bill.status === 'Cancelled') return;
-    if (!window.confirm(`Cancel bill ${bill.invoiceNo}? It stays in history marked Cancelled, is removed from sales totals, and its stock is returned to inventory.`)) return;
-    const reason = window.prompt('Reason for cancelling (optional):', '') ?? '';
+    const restock = bill.status === 'Cancelled' ? '' : ' Its items go back into stock.';
+    if (!window.confirm(`Cancel bill ${bill.invoiceNo}?${restock} The bill is deleted and removed from all screens and sales totals. This cannot be undone.`)) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      await request(`/bills/${bill._id}/void`, { method: 'POST', body: JSON.stringify({ reason }) });
+      await request(`/bills/${bill._id}/void`, { method: 'POST', body: JSON.stringify({}) });
       setLastBill(null);
       await load();
-      setMessage(`Bill ${bill.invoiceNo} was cancelled and its stock restored.`);
+      setMessage(bill.status === 'Cancelled' ? `Bill ${bill.invoiceNo} was deleted.` : `Bill ${bill.invoiceNo} was cancelled, its stock restored and the bill deleted.`);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
