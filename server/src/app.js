@@ -11,6 +11,7 @@ import { buildGstWorkbook, monthToDate, daysInMonth } from './lib/gstExcel.js';
 import productsRouter from './routes/products.js';
 import billsRouter from './routes/bills.js';
 import dashboardRouter from './routes/dashboard.js';
+import { requireAdmin } from './lib/roles.js';
 
 const app = express();
 app.set('trust proxy', 1); // Vercel sits behind a proxy; needed for correct client IPs in rate limiting
@@ -58,10 +59,17 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   if (!expectedUser || !expectedPass || secret.length < 32) {
     return res.status(503).json({ message: 'Admin login is not configured. Set ADMIN_USERNAME, ADMIN_PASSWORD and a 32+ character JWT_SECRET.' });
   }
-  if (!safeEqual(username, expectedUser) || !safeEqual(password, expectedPass)) {
+  // Two logins: the admin (everything) and an optional staff user (billing + view inventory only).
+  // Both comparisons always run so the response time does not reveal which account was tried.
+  const staffUser = process.env.STAFF_USERNAME || '';
+  const staffPass = process.env.STAFF_PASSWORD || '';
+  const isAdmin = safeEqual(username, expectedUser) & safeEqual(password, expectedPass);
+  const isStaff = Boolean(staffUser && staffPass) && (safeEqual(username, staffUser) & safeEqual(password, staffPass));
+  if (!isAdmin && !isStaff) {
     return res.status(401).json({ message: 'Username or password is incorrect.' });
   }
-  return res.json({ token: jwt.sign({ sub: expectedUser }, secret, { expiresIn: '12h' }) });
+  const role = isAdmin ? 'admin' : 'user';
+  return res.json({ role, token: jwt.sign({ sub: isAdmin ? expectedUser : staffUser, role }, secret, { expiresIn: '12h' }) });
 });
 const reportLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { message: 'Too many report requests. Try again later.' } });
 // Read-only GST reports for the scheduled morning notification. Protected by REPORT_TOKEN, not the admin login.
@@ -110,6 +118,8 @@ app.use('/api', (req, res, next) => {
   try {
     if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('JWT secret is not configured');
     req.user = jwt.verify(token, process.env.JWT_SECRET);
+    // Sessions signed before roles existed were admin-only logins.
+    req.user.role = req.user.role === 'user' ? 'user' : 'admin';
     return next();
   } catch {
     return res.status(401).json({ message: 'Your session has expired. Sign in again.' });
@@ -117,7 +127,7 @@ app.use('/api', (req, res, next) => {
 });
 app.use('/api/products', productsRouter);
 app.use('/api/bills', billsRouter);
-app.use('/api/dashboard', dashboardRouter);
+app.use('/api/dashboard', requireAdmin, dashboardRouter);
 app.use((req, res) => res.status(404).json({ message: `Route not found: ${req.method} ${req.path}` }));
 app.use((error, _req, res, _next) => {
   if (!error.status || error.status >= 500) console.error(error);

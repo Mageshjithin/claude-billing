@@ -84,3 +84,4 @@
 .receipt-style .incl-note{text-align:center;font-weight:700;font-size:11px;margin:8px 0 0}
 .check-line label{display:flex;align-items:center;gap:8px;font-size:11px;color:#574e57;cursor:pointer}
 .check-line input[type=checkbox]{width:15px;height:15px;margin:0;padding:0;flex:none;accent-color:var(--plum)}
+.role-chip{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:999px;background:var(--rose);color:var(--plum);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}

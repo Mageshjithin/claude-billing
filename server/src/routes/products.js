@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { loadData, transaction, httpError } from '../db.js';
+import { isAdmin, requireAdmin, withoutCost } from '../lib/roles.js';
 
 const router = Router();
 const editable = ['name', 'sku', 'barcode', 'category', 'price', 'costPrice', 'stock', 'active'];
@@ -43,11 +44,11 @@ router.get('/', async (req, res, next) => {
     const result = products
       .filter((p) => p.active && (!search || matches(p.name) || matches(p.sku) || matches(p.barcode) || matches(p.category)))
       .sort((a, b) => a.name.localeCompare(b.name));
-    res.json({ products: result });
+    res.json({ products: isAdmin(req) ? result : result.map(withoutCost) });
   } catch (error) { next(error); }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireAdmin, async (req, res, next) => {
   try {
     const now = new Date().toISOString();
     const product = await transaction((data) => {
@@ -60,7 +61,7 @@ router.post('/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     await transaction((data) => {
       const index = data.products.findIndex((product) => product._id === req.params.id);
@@ -71,7 +72,7 @@ router.delete('/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/:id', async (req, res, next) => {
+router.patch('/:id', requireAdmin, async (req, res, next) => {
   try {
     const product = await transaction((data) => {
       const index = data.products.findIndex((p) => p._id === req.params.id);
