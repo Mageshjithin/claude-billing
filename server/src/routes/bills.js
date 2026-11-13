@@ -17,27 +17,28 @@ router.get('/', requireAdmin, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Bills are never deleted (GST/accounting records). A bill can be voided instead:
-// it is marked Cancelled, kept in history, excluded from sales totals, and stock is restored.
+// Cancelling a bill puts its items back into stock and deletes the bill, so it no longer
+// appears anywhere or counts in sales. Only the admin can do it. Invoice numbers are never reused
+// (data.invoiceSequence keeps counting). The route stays at /void for older pages.
 router.post('/:id/void', requireAdmin, async (req, res, next) => {
   try {
     const bill = await transaction((data) => {
-      const found = data.bills.find((b) => b._id === req.params.id);
-      if (!found) throw httpError(404, 'Bill not found.');
-      if (found.status === 'Cancelled') throw httpError(409, 'This bill is already cancelled.');
+      const index = data.bills.findIndex((b) => b._id === req.params.id);
+      if (index === -1) throw httpError(404, 'Bill not found. It may already be cancelled.');
+      const found = data.bills[index];
       const now = new Date().toISOString();
-      for (const item of found.items || []) {
-        if (!item.productId) continue; // manual items never touched stock
-        const product = data.products.find((p) => p._id === item.productId);
-        if (product) { product.stock += Number(item.quantity) || 0; product.updatedAt = now; }
+      // A bill cancelled under the old rule already had its stock returned.
+      if (found.status !== 'Cancelled') {
+        for (const item of found.items || []) {
+          if (!item.productId) continue; // manual items never touched stock
+          const product = data.products.find((p) => p._id === item.productId);
+          if (product) { product.stock += Number(item.quantity) || 0; product.updatedAt = now; }
+        }
       }
-      found.status = 'Cancelled';
-      found.cancelledAt = now;
-      found.cancelReason = String(req.body?.reason || '').trim().slice(0, 200);
-      found.updatedAt = now;
-      return found;
+      data.bills.splice(index, 1);
+      return { _id: found._id, invoiceNo: found.invoiceNo };
     });
-    res.json({ bill });
+    res.json({ deleted: true, bill });
   } catch (error) { next(error); }
 });
 
