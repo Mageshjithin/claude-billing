@@ -5,11 +5,12 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { loadData, transaction, httpError } from '../db.js';
 import { istDate } from '../lib/salesReport.js';
+import { isAdmin, requireAdmin, billWithoutCost } from '../lib/roles.js';
 
 const router = Router();
 const money = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
-router.get('/', async (req, res, next) => {
+router.get('/', requireAdmin, async (req, res, next) => {
   try {
     const { bills, products } = await loadData();
     res.json(salesReport(bills, req.query, products));
@@ -18,7 +19,7 @@ router.get('/', async (req, res, next) => {
 
 // Bills are never deleted (GST/accounting records). A bill can be voided instead:
 // it is marked Cancelled, kept in history, excluded from sales totals, and stock is restored.
-router.post('/:id/void', async (req, res, next) => {
+router.post('/:id/void', requireAdmin, async (req, res, next) => {
   try {
     const bill = await transaction((data) => {
       const found = data.bills.find((b) => b._id === req.params.id);
@@ -122,7 +123,7 @@ router.post('/', async (req, res, next) => {
       const remainingStock = items.filter(item => item.productId).map(({ productId }) => ({ productId, stock: data.products.find((p) => p._id === productId).stock }));
       return { bill, remainingStock };
     });
-    return res.status(201).json(result);
+    return res.status(201).json(isAdmin(req) ? result : { ...result, bill: billWithoutCost(result.bill) });
   } catch (error) { return next(error); }
 });
 

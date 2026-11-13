@@ -61,6 +61,7 @@ test('saving a bill: GST included in rate and round off by default, both can be 
   const router = (await import('../src/routes/bills.js')).default;
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => { req.user = { role: 'admin' }; next(); });
   app.use('/bills', router);
   app.use((err, req, res, next) => res.status(err.status || 500).json({ message: err.message }));
   const server = app.listen(0, '127.0.0.1');

@@ -28,7 +28,7 @@ test('bill API persists payment, preserves history and rolls back invalid reques
   }});
   const express = (await import('express')).default;
   const router = (await import('../src/routes/bills.js')).default;
-  const app=express();app.use(express.json());app.use('/bills',router);app.use((err,req,res,next)=>res.status(err.status||500).json({message:err.message}));
+  const app=express();app.use(express.json());app.use((req,_res,next)=>{req.user={role:'admin'};next();});app.use('/bills',router);app.use((err,req,res,next)=>res.status(err.status||500).json({message:err.message}));
   const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
   const base=`http://127.0.0.1:${server.address().port}/bills`;
   const post=async payment=>{const res=await fetch(base,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{productId:'p1',quantity:1}],...payment})});return {status:res.status,data:await res.json()};};

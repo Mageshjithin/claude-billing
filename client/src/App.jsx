@@ -24,9 +24,21 @@ async function request(path, options) {
   return data;
 }
 
+// Reads the role from the session token. Only decides what to show; the server enforces access.
+function sessionRole() {
+  try {
+    const payload = JSON.parse(atob(localStorage.getItem('jms_session').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.role === 'user' ? 'user' : 'admin';
+  } catch { return 'admin'; }
+}
+const ADMIN_PAGES = ['Overview', 'New bill', 'Billing option', 'Inventory', 'Sales history', 'Sales reports'];
+const USER_PAGES = ['New bill', 'Billing option', 'Inventory'];
+
 function App() {
-  const [page, setPage] = useState('Overview');
   const [loggedIn, setLoggedIn] = useState(Boolean(localStorage.getItem('jms_session')));
+  const [role, setRole] = useState(() => localStorage.getItem('jms_session') ? sessionRole() : 'admin');
+  const isAdmin = role === 'admin';
+  const [page, setPage] = useState(() => localStorage.getItem('jms_session') && sessionRole() === 'user' ? 'New bill' : 'Overview');
   const [summary, setSummary] = useState(null);
   const [products, setProducts] = useState([]);
   const [bills, setBills] = useState([]);
@@ -58,11 +70,18 @@ function App() {
 
   const load = useCallback(async () => {
     try {
+      if (sessionRole() !== 'admin') {
+        const p = await request('/products');
+        setProducts(p.products || []); setBills([]); setSummary(null); setError('');
+        return;
+      }
       const [p, b, d] = await Promise.all([request('/products'), request('/bills?limit=50'), request('/dashboard/summary')]);
       setProducts(p.products || []); setBills(b.bills || []); setSummary(d.summary || {}); setError('');
     } catch (e) { setError(e.message); if (e.status === 401) { localStorage.removeItem('jms_session'); setLoggedIn(false); } }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (loggedIn) load(); }, [load, loggedIn]);
+  // Staff never stay on an admin-only page (e.g. after switching accounts).
+  useEffect(() => { if (!(isAdmin ? ADMIN_PAGES : USER_PAGES).includes(page)) setPage(isAdmin ? 'Overview' : 'New bill'); }, [isAdmin, page]);
 
   const subtotal = useMemo(() => isManual
     ? manualCart.reduce((sum, row) => sum + Math.round((Number(row.rate) || 0) * 100) * (Number(row.quantity) || 0), 0) / 100
@@ -203,7 +222,7 @@ function App() {
     finally { setBusy(false); }
   }
 
-  if (!loggedIn) return <Login onLogin={() => { setLoggedIn(true); setError(''); }} />;
+  if (!loggedIn) return <Login onLogin={(newRole) => { setRole(newRole); setPage(newRole === 'user' ? 'New bill' : 'Overview'); setLoggedIn(true); setError(''); }} />;
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -211,15 +230,15 @@ function App() {
       <div className="store-label">STORE MANAGEMENT</div>
       <nav>{[
         ['Overview', LayoutDashboard], ['New bill', ReceiptText], ['Billing option', Pencil], ['Inventory', Package], ['Sales history', BarChart3], ['Sales reports', BarChart3],
-      ].map(([label, Icon]) => <button key={label} className={`nav-item ${page === label ? 'active' : ''}`} onClick={() => setPage(label)}><Icon size={18}/><span>{label}</span>{label === 'New bill' && <span className="nav-dot"/>}</button>)}</nav>
+      ].filter(([label]) => (isAdmin ? ADMIN_PAGES : USER_PAGES).includes(label)).map(([label, Icon]) => <button key={label} className={`nav-item ${page === label ? 'active' : ''}`} onClick={() => setPage(label)}><Icon size={18}/><span>{label}</span>{label === 'New bill' && <span className="nav-dot"/>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="online-dot"/> <span>Billing system ready</span><span className="version">v1.0</span></div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><div><div className="breadcrumb">JMS Textiles <span>/</span> {page}</div><h1>{isManual ? 'Manual billing' : page === 'New bill' ? 'Create a bill' : page}</h1></div><div className="top-actions"><span className="today-chip"><Clock3 size={15}/>{new Date().toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</span><button className="avatar logout-button" title="Sign out" onClick={() => { localStorage.removeItem('jms_session'); setLoggedIn(false); setCart([]); setManualCart([{ name: '', quantity: '1', rate: '' }]); }}>JM</button></div></header>
+      <header className="topbar"><div><div className="breadcrumb">JMS Textiles <span>/</span> {page}</div><h1>{isManual ? 'Manual billing' : page === 'New bill' ? 'Create a bill' : page}</h1></div><div className="top-actions"><span className="today-chip"><Clock3 size={15}/>{new Date().toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</span><span className="role-chip">{isAdmin ? 'Admin' : 'User'}</span><button className="avatar logout-button" title="Sign out" onClick={() => { localStorage.removeItem('jms_session'); setLoggedIn(false); setCart([]); setManualCart([{ name: '', quantity: '1', rate: '' }]); setProducts([]); setBills([]); setSummary(null); setLastBill(null); }}>JM</button></div></header>
       <div className="content">
         {error && <div className="alert error"><AlertTriangle size={17}/>{error}<button onClick={() => setError('')}>×</button></div>}
         {message && <div className="alert success"><Check size={17}/>{message}<button onClick={() => setMessage('')}>×</button></div>}
-        {page === 'Overview' && <>
+        {isAdmin && page === 'Overview' && <>
           <section className="welcome-row"><div><p className="eyebrow">YOUR SHOP AT A GLANCE</p><h2>Good day, JMS <span>✦</span></h2><p>Here’s what’s happening at your store today.</p></div><button className="primary" onClick={() => setPage('New bill')}><Plus size={17}/> Create new bill</button></section>
           <div className="stats-grid">
             <Stat icon={CircleDollarSign} label="Today's sales" value={money(summary?.todaySales)} note={`${summary?.todayBills || 0} bills today`} tone="plum"/>
@@ -261,16 +280,16 @@ function App() {
           </aside>
         </div>}
 
-        {page === 'Inventory' && <section className="panel inventory-panel"><div className="panel-heading"><div><h3>Product inventory</h3><p>Manage products, barcodes, prices and available stock</p></div><div className="inventory-actions"><button className="primary" onClick={() => openProductForm()}><Plus size={17}/> Add product</button></div></div>{showProductForm && <form className="product-form" onSubmit={createProduct}><h3>{editingProduct ? `Edit ${editingProduct.name}` : 'Add product'}</h3><div className="form-grid"><Field label="Product name" value={productForm.name} onChange={(v) => setProductForm({ ...productForm, name: v })} required/><Field label="SKU" value={productForm.sku} onChange={(v) => setProductForm({ ...productForm, sku: v })} required/><Field label="Barcode / QR value" value={productForm.barcode} onChange={(v) => setProductForm({ ...productForm, barcode: v })}/><Field label="Category" value={productForm.category} onChange={(v) => setProductForm({ ...productForm, category: v })}/><Field label="Selling price (₹)" value={productForm.price} onChange={(v) => setProductForm({ ...productForm, price: v })} type="number" required/><Field label="Cost price (₹, optional)" value={productForm.costPrice} onChange={(v) => setProductForm({ ...productForm, costPrice: v })} type="number"/><Field label={editingProduct ? "Current stock" : "Opening stock"} value={productForm.stock} onChange={(v) => setProductForm({ ...productForm, stock: v })} type="number" required/></div><div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={() => { setShowProductForm(false); setEditingProduct(null); }}>Cancel</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : editingProduct ? 'Save changes' : 'Save product'}</button></div></form>}<div className="inventory-search-row"><div className="search-field"><Search size={18} aria-hidden="true"/><input aria-label="Search inventory" value={inventorySearch} onChange={e => setInventorySearch(e.target.value)} placeholder="Search name, SKU, barcode or category"/>{inventorySearch && <button type="button" className="text-button" onClick={() => setInventorySearch('')}>Clear search</button>}</div><span className="soft-count">{inventoryProducts.length} of {products.length} products</span><button className="secondary" disabled={busy} onClick={load}>Refresh inventory</button></div><div className="table-wrap"><table><thead><tr><th>PRODUCT</th><th>SKU / BARCODE</th><th>CATEGORY</th><th>PRICE</th><th>COST</th><th>STOCK</th><th>ADJUST STOCK</th><th>EDIT</th><th>DELETE</th></tr></thead><tbody>{inventoryProducts.map((p) => <tr key={p._id}><td><div className="product-cell"><span className="fabric-swatch small">{p.name.slice(0, 1).toUpperCase()}</span><b>{p.name}</b></div></td><td>{p.sku}<small className="table-sub">{p.barcode || 'No barcode'}</small></td><td>{p.category}</td><td><b>{money(p.price)}</b></td><td>{p.costPrice == null ? '—' : money(p.costPrice)}</td><td><span className={`stock-badge ${p.stock <= 5 ? 'low' : ''}`}>{p.stock} {p.stock <= 5 && <AlertTriangle size={12}/>}</span></td><td><div className="stock-actions"><button type="button" className="stock-adjust-button" aria-label={`Remove one ${p.name} from stock`} title="Remove one from stock" disabled={busy || p.stock <= 0} onClick={() => adjustStock(p, -1)}><Minus size={15}/></button><button type="button" className="stock-adjust-button" aria-label={`Add one ${p.name} to stock`} title="Add one to stock" disabled={busy} onClick={() => adjustStock(p, 1)}><Plus size={15}/></button></div></td><td><button type="button" className="secondary small-button" aria-label={`Edit ${p.name}`} disabled={busy} onClick={() => { openProductForm(p); document.querySelector('.inventory-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><Pencil size={14}/> Edit</button></td><td><button type="button" className="clear-inventory-button product-delete-button" aria-label={`Delete ${p.name} from inventory`} disabled={busy} onClick={() => deleteProduct(p)}><Trash2 size={14}/> Delete</button></td></tr>)}</tbody></table>{!inventoryProducts.length && <div className="empty-state">{products.length ? 'No products match your search. Clear search to see all products.' : 'No products yet. Add your first product to get started.'}</div>}</div></section>}
+        {page === 'Inventory' && <section className="panel inventory-panel"><div className="panel-heading"><div><h3>Product inventory</h3><p>{isAdmin ? 'Manage products, barcodes, prices and available stock' : 'Products, selling prices and available stock (view only)'}</p></div>{isAdmin && <div className="inventory-actions"><button className="primary" onClick={() => openProductForm()}><Plus size={17}/> Add product</button></div>}</div>{isAdmin && showProductForm && <form className="product-form" onSubmit={createProduct}><h3>{editingProduct ? `Edit ${editingProduct.name}` : 'Add product'}</h3><div className="form-grid"><Field label="Product name" value={productForm.name} onChange={(v) => setProductForm({ ...productForm, name: v })} required/><Field label="SKU" value={productForm.sku} onChange={(v) => setProductForm({ ...productForm, sku: v })} required/><Field label="Barcode / QR value" value={productForm.barcode} onChange={(v) => setProductForm({ ...productForm, barcode: v })}/><Field label="Category" value={productForm.category} onChange={(v) => setProductForm({ ...productForm, category: v })}/><Field label="Selling price (₹)" value={productForm.price} onChange={(v) => setProductForm({ ...productForm, price: v })} type="number" required/><Field label="Cost price (₹, optional)" value={productForm.costPrice} onChange={(v) => setProductForm({ ...productForm, costPrice: v })} type="number"/><Field label={editingProduct ? "Current stock" : "Opening stock"} value={productForm.stock} onChange={(v) => setProductForm({ ...productForm, stock: v })} type="number" required/></div><div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={() => { setShowProductForm(false); setEditingProduct(null); }}>Cancel</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : editingProduct ? 'Save changes' : 'Save product'}</button></div></form>}<div className="inventory-search-row"><div className="search-field"><Search size={18} aria-hidden="true"/><input aria-label="Search inventory" value={inventorySearch} onChange={e => setInventorySearch(e.target.value)} placeholder="Search name, SKU, barcode or category"/>{inventorySearch && <button type="button" className="text-button" onClick={() => setInventorySearch('')}>Clear search</button>}</div><span className="soft-count">{inventoryProducts.length} of {products.length} products</span><button className="secondary" disabled={busy} onClick={load}>Refresh inventory</button></div><div className="table-wrap"><table><thead><tr><th>PRODUCT</th><th>SKU / BARCODE</th><th>CATEGORY</th><th>PRICE</th>{isAdmin && <th>COST</th>}<th>STOCK</th>{isAdmin && <><th>ADJUST STOCK</th><th>EDIT</th><th>DELETE</th></>}</tr></thead><tbody>{inventoryProducts.map((p) => <tr key={p._id}><td><div className="product-cell"><span className="fabric-swatch small">{p.name.slice(0, 1).toUpperCase()}</span><b>{p.name}</b></div></td><td>{p.sku}<small className="table-sub">{p.barcode || 'No barcode'}</small></td><td>{p.category}</td><td><b>{money(p.price)}</b></td>{isAdmin && <td>{p.costPrice == null ? '—' : money(p.costPrice)}</td>}<td><span className={`stock-badge ${p.stock <= 5 ? 'low' : ''}`}>{p.stock} {p.stock <= 5 && <AlertTriangle size={12}/>}</span></td>{isAdmin && <><td><div className="stock-actions"><button type="button" className="stock-adjust-button" aria-label={`Remove one ${p.name} from stock`} title="Remove one from stock" disabled={busy || p.stock <= 0} onClick={() => adjustStock(p, -1)}><Minus size={15}/></button><button type="button" className="stock-adjust-button" aria-label={`Add one ${p.name} to stock`} title="Add one to stock" disabled={busy} onClick={() => adjustStock(p, 1)}><Plus size={15}/></button></div></td><td><button type="button" className="secondary small-button" aria-label={`Edit ${p.name}`} disabled={busy} onClick={() => { openProductForm(p); document.querySelector('.inventory-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><Pencil size={14}/> Edit</button></td><td><button type="button" className="clear-inventory-button product-delete-button" aria-label={`Delete ${p.name} from inventory`} disabled={busy} onClick={() => deleteProduct(p)}><Trash2 size={14}/> Delete</button></td></>}</tr>)}</tbody></table>{!inventoryProducts.length && <div className="empty-state">{products.length ? 'No products match your search. Clear search to see all products.' : (isAdmin ? 'No products yet. Add your first product to get started.' : 'No products yet. Ask the admin to add products.')}</div>}</div></section>}
 
-        {['Sales history', 'Sales reports'].includes(page) && <SalesExplorer key={page} reports={page === 'Sales reports'} request={request} onSelect={setLastBill}/> }
+        {isAdmin && ['Sales history', 'Sales reports'].includes(page) && <SalesExplorer key={page} reports={page === 'Sales reports'} request={request} onSelect={setLastBill}/> }
       </div>
     </main>
     {showCameraScanner && <CameraScanner onClose={() => setShowCameraScanner(false)} onScan={(value) => {
       setShowCameraScanner(false);
       addScannedValue(value, false);
     }}/>}
-    {lastBill && <div className="modal-backdrop invoice-backdrop" onClick={() => setLastBill(null)}><div className="invoice-modal" onClick={(e) => e.stopPropagation()}><div className="invoice-actions"><span className="soft-count">{lastBill.status === 'Cancelled' ? 'Cancelled bill' : 'Saved bill'}</span>{lastBill.status !== 'Cancelled' && <button className="secondary" disabled={busy} onClick={() => voidBill(lastBill)}><Ban size={16}/> Cancel bill</button>}<button className="secondary" onClick={() => printReceipt(document.querySelector('.invoice-paper')).catch((error) => setError(error.message))}><Printer size={16}/> Print receipt</button><button className="icon-button" onClick={() => setLastBill(null)}>×</button></div><Invoice bill={lastBill}/></div></div>}
+    {lastBill && <div className="modal-backdrop invoice-backdrop" onClick={() => setLastBill(null)}><div className="invoice-modal" onClick={(e) => e.stopPropagation()}><div className="invoice-actions"><span className="soft-count">{lastBill.status === 'Cancelled' ? 'Cancelled bill' : 'Saved bill'}</span>{isAdmin && lastBill.status !== 'Cancelled' && <button className="secondary" disabled={busy} onClick={() => voidBill(lastBill)}><Ban size={16}/> Cancel bill</button>}<button className="secondary" onClick={() => printReceipt(document.querySelector('.invoice-paper')).catch((error) => setError(error.message))}><Printer size={16}/> Print receipt</button><button className="icon-button" onClick={() => setLastBill(null)}>×</button></div><Invoice bill={lastBill}/></div></div>}
   </div>;
 }
 
@@ -350,7 +369,7 @@ function Login({ onLogin }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError('');
-    try { const result = await request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); localStorage.setItem('jms_session', result.token); onLogin(); }
+    try { const result = await request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); localStorage.setItem('jms_session', result.token); onLogin(result.role === 'user' ? 'user' : 'admin'); }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   return <div className="login-screen"><form className="login-card" onSubmit={submit}><div className="brand login-brand"><span className="brand-mark"><Shirt size={21}/></span><span><strong>JMS</strong><small>TEXTILES</small></span></div><p className="eyebrow">STORE MANAGEMENT</p><h1>Welcome back</h1><p className="login-description">Sign in to manage billing and stock.</p>{error && <div className="alert error">{error}</div>}<label className="field-label">Username<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required /></label><label className="field-label">Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label><button className="primary login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button></form></div>;

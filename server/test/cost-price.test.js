@@ -30,6 +30,7 @@ test('cost price is optional, validated, editable, clearable and totalled on the
   const dashboard = (await import('../src/routes/dashboard.js')).default;
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => { req.user = { role: 'admin' }; next(); });
   app.use('/products', products);
   app.use('/dashboard', dashboard);
   app.use((err, req, res, next) => res.status(err.status || 500).json({ message: err.message }));
