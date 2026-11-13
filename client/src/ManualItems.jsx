@@ -8,7 +8,7 @@ export default function ManualItems({ items, onChange, busy }) {
   }
   return <section className="panel bill-left manual-billing">
     <div className="panel-heading"><div><h3>Manual billing</h3><p>Enter item name, quantity and rate to create a bill.</p></div><span className="soft-count">{items.length} items</span></div>
-    <p className="manual-note">Manual items are saved in sales history. Inventory stock is not adjusted.</p>
+    <p className="manual-note">Manual items are saved in Sales. Inventory stock is not adjusted.</p>
     <div className="manual-items">
       {items.map((item, index) => <div className="manual-item-row" key={index}>
         <label className="field-label manual-item-name">Item name<input aria-label={`Item ${index + 1} name`} maxLength={120} value={item.name} disabled={busy} placeholder="e.g. Cotton saree" onChange={e => update(index, 'name', e.target.value)} /></label>

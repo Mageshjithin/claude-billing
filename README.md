@@ -21,7 +21,7 @@ A React + Vite billing and stock app with an Express + Node.js API that stores d
 | New bill, manual billing, print receipt | ✓ | ✓ |
 | Inventory: view products, selling price, stock | ✓ | ✓ |
 | Inventory: cost price, add / edit / delete, adjust stock | ✓ | — |
-| Overview dashboard, sales history, sales reports, profit | ✓ | — |
+| Overview dashboard, Sales (history, reports, profit) | ✓ | — |
 | Cancel a bill | ✓ | — |
 
 Access is enforced by the API (403 for staff on admin-only routes; cost prices are removed from staff responses), not only hidden in the screen. The staff login is off until `STAFF_USERNAME` and `STAFF_PASSWORD` are set.
