@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 const money = n => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR'}).format(Number(n)||0);
 const today = () => new Date(Date.now()+330*60000).toISOString().slice(0,10);
 const dateTime = value => new Date(value).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'});
-export default function SalesExplorer({reports, request, onSelect}) {
-  const [mode,setMode]=useState(reports?'day':'all');
+export default function SalesExplorer({request, onSelect}) {
+  const [mode,setMode]=useState('day');
   const [date,setDate]=useState(today());
   const [month,setMonth]=useState(today().slice(0,7));
   const [year,setYear]=useState(today().slice(0,4));
@@ -26,7 +26,7 @@ export default function SalesExplorer({reports, request, onSelect}) {
   },[mode,period,search,paymentMethod,page,refresh,request]);
   function changeMode(value){setMode(value);setPage(1);}
   return <section className="panel sales-explorer">
-    <div className="panel-heading"><div><h3>{reports?'Sales reports':'All bill history'}</h3><p>All saved bills · Dates and times in IST · Click a bill to view or reprint</p></div><button className="secondary" onClick={()=>setRefresh(n=>n+1)} disabled={loading}>Refresh</button></div>
+    <div className="panel-heading"><div><h3>Sales</h3><p>Totals and every saved bill · Dates and times in IST · Click a bill to view or reprint</p></div><button className="secondary" onClick={()=>setRefresh(n=>n+1)} disabled={loading}>Refresh</button></div>
     <div className="report-filters">
       <label className="field-label">Period<select aria-label="Report period" value={mode} onChange={e=>changeMode(e.target.value)}><option value="day">Day wise</option><option value="month">Month wise</option><option value="year">Year wise</option><option value="all">All time</option></select></label>
       {mode==='day'&&<label className="field-label">Date<input type="date" value={date} onChange={e=>{setDate(e.target.value);setPage(1);}}/></label>}
@@ -45,8 +45,8 @@ export default function SalesExplorer({reports, request, onSelect}) {
         <div><span>GST collected</span><strong>{money(data.summary.tax)}</strong><small>Totals for the selected filters</small></div>
         <div><span>Profit</span><strong>{data.summary.profitBills?money(data.summary.profit):'—'}</strong><small>{data.summary.profitBills?`${data.summary.profitMargin}% margin · ${data.summary.profitBills} of ${data.summary.billCount} bills have cost data`:'Add cost prices to products to see profit'}</small></div>
       </div>
-      {reports&&data.paymentGroups?.length>0&&<><h3 className="report-bills-title">Sales by payment method</h3><div className="table-wrap report-breakdown"><table><thead><tr><th>PAYMENT METHOD</th><th>BILLS</th><th>SALES</th></tr></thead><tbody>{data.paymentGroups.map(group=><tr key={group.paymentMethod}><td>{group.paymentMethod}</td><td>{group.billCount}</td><td>{money(group.sales)}</td></tr>)}</tbody></table></div></>}
-      {reports&&data.groups.length>0&&<div className="table-wrap report-breakdown"><table><thead><tr><th>{mode==='year'?'MONTH':mode==='all'?'YEAR':'DATE'}</th><th>BILLS</th><th>ITEMS</th><th>DISCOUNT</th><th>GST</th><th>SALES</th><th>PROFIT</th></tr></thead><tbody>{data.groups.map(g=><tr key={g.period}><td>{g.period}</td><td>{g.billCount}</td><td>{g.items}</td><td>{money(g.discount)}</td><td>{money(g.tax)}</td><td><b>{money(g.sales)}</b></td><td>{g.profitBills?<>{money(g.profit)}{g.profitMargin!=null&&<small className="table-sub">{g.profitMargin}% of sales</small>}{g.profitBills<g.billCount&&<small className="table-sub">{g.profitBills} of {g.billCount} bills</small>}</>:'—'}</td></tr>)}</tbody></table></div>}
+      {data.paymentGroups?.length>0&&<><h3 className="report-bills-title">Sales by payment method</h3><div className="table-wrap report-breakdown"><table><thead><tr><th>PAYMENT METHOD</th><th>BILLS</th><th>SALES</th></tr></thead><tbody>{data.paymentGroups.map(group=><tr key={group.paymentMethod}><td>{group.paymentMethod}</td><td>{group.billCount}</td><td>{money(group.sales)}</td></tr>)}</tbody></table></div></>}
+      {data.groups.length>0&&<div className="table-wrap report-breakdown"><table><thead><tr><th>{mode==='year'?'MONTH':mode==='all'?'YEAR':'DATE'}</th><th>BILLS</th><th>ITEMS</th><th>DISCOUNT</th><th>GST</th><th>SALES</th><th>PROFIT</th></tr></thead><tbody>{data.groups.map(g=><tr key={g.period}><td>{g.period}</td><td>{g.billCount}</td><td>{g.items}</td><td>{money(g.discount)}</td><td>{money(g.tax)}</td><td><b>{money(g.sales)}</b></td><td>{g.profitBills?<>{money(g.profit)}{g.profitMargin!=null&&<small className="table-sub">{g.profitMargin}% of sales</small>}{g.profitBills<g.billCount&&<small className="table-sub">{g.profitBills} of {g.billCount} bills</small>}</>:'—'}</td></tr>)}</tbody></table></div>}
       <h3 className="report-bills-title">Bills {data.total>0&&`(${data.total})`}</h3>
       <div className="table-wrap"><table><thead><tr><th>INVOICE</th><th>CUSTOMER</th><th>DATE & TIME (IST)</th><th>ITEMS</th><th>TOTAL</th><th>PROFIT</th><th>PAYMENT METHOD</th><th>RECEIVED</th><th>CHANGE</th><th>BALANCE DUE</th><th>STATUS</th></tr></thead><tbody>{data.bills.map(b=><tr key={b._id}><td><button className="text-button" onClick={()=>onSelect(b)}>{b.invoiceNo}</button></td><td>{b.customerName||'Walk-in customer'}<small className="table-sub">{b.customerPhone}</small></td><td>{dateTime(b.createdAt)}</td><td>{(b.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0)}</td><td><b>{money(b.total)}</b></td><td>{b.profit==null?'—':<>{money(b.profit)}{b.profitMargin!=null&&<small className="table-sub">{b.profitMargin}% of sales</small>}</>}</td><td>{b.paymentMethod || 'Not recorded'}</td><td>{b.paymentMethod ? money(b.amountReceived) : '—'}</td><td>{b.paymentMethod ? money(b.changeDue) : '—'}</td><td>{b.paymentMethod ? money(b.balanceDue) : '—'}</td><td>{paymentStatus(b)}</td></tr>)}</tbody></table></div>
       {!data.total&&<div className="empty-state">No bills match these filters. Try All time or All payment methods to find other bills.</div>}
