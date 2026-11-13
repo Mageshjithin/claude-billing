@@ -52,6 +52,8 @@ function App() {
   const [inventorySearch, setInventorySearch] = useState('');
   const [editingProduct, setEditingProduct] = useState(null);
   const inventoryProducts = products.filter(p => [p.name, p.sku, p.barcode, p.category].some(v => String(v || '').toLowerCase().includes(inventorySearch.trim().toLowerCase())));
+  const [roundOff, setRoundOff] = useState(true);
+  const [gstInclusive, setGstInclusive] = useState(true);
   const [productForm, setProductForm] = useState({ name: '', sku: '', barcode: '', category: 'Saree', price: '', costPrice: '', stock: '' });
 
   const load = useCallback(async () => {
@@ -67,8 +69,11 @@ function App() {
     : cart.reduce((sum, row) => sum + Math.round(row.price * row.quantity * 100), 0) / 100, [cart, manualCart, isManual]);
   const safeDiscount = Math.round(Math.min(Math.max(Number(discount) || 0, 0), subtotal) * 100) / 100;
   const taxable = Math.max(0, subtotal - safeDiscount);
-  const tax = Math.round(taxable * Math.max(0, Number(gstPercent) || 0)) / 100;
-  const total = Math.round((taxable + tax) * 100) / 100;
+  const gstRate = Math.max(0, Number(gstPercent) || 0);
+  const tax = gstInclusive ? Math.round((taxable - taxable / (1 + gstRate / 100)) * 100) / 100 : Math.round(taxable * gstRate) / 100;
+  const exactTotal = gstInclusive ? Math.round(taxable * 100) / 100 : Math.round((taxable + tax) * 100) / 100;
+  const total = roundOff ? Math.round(exactTotal) : exactTotal;
+  const roundOffAmount = Math.round((total - exactTotal) * 100) / 100;
   const received = Number(amountReceived);
   const paymentError = amountReceived.trim() === '' ? 'Enter the amount received.' : !Number.isFinite(received) || received < 0 || received > 100000000 || Math.abs(received * 100 - Math.round(received * 100)) > 0.00001 ? 'Enter a valid amount with up to two decimal places.' : paymentMethod !== 'Cash' && received > total ? 'Digital payment cannot exceed the bill total.' : '';
   const balanceDue = Math.max(0, Math.round((total - received) * 100) / 100);
@@ -131,9 +136,9 @@ function App() {
       const result = await request('/bills', { method: 'POST', body: JSON.stringify({
         customerName: customerName || 'Walk-in customer', customerPhone, discount: safeDiscount, paymentMethod, amountReceived: received,
         billingMode: isManual ? 'manual' : 'inventory',
-        gstPercent: Math.max(0, Number(gstPercent) || 0), items: isManual ? manualCart.map(item => ({ name: item.name.trim(), quantity: Number(item.quantity), rate: Number(item.rate) })) : cart.map((x) => ({ productId: x._id, quantity: x.quantity })),
+        gstPercent: Math.max(0, Number(gstPercent) || 0), gstInclusive, roundOff, items: isManual ? manualCart.map(item => ({ name: item.name.trim(), quantity: Number(item.quantity), rate: Number(item.rate) })) : cart.map((x) => ({ productId: x._id, quantity: x.quantity })),
       }) });
-      setLastBill(result.bill); setAmountReceived(''); setPaymentMethod('Cash'); if (isManual) setManualCart([{ name: '', quantity: '1', rate: '' }]); else setCart([]); setCustomerName(''); setCustomerPhone(''); setDiscount('0'); setGstPercent('5');
+      setLastBill(result.bill); setAmountReceived(''); setPaymentMethod('Cash'); if (isManual) setManualCart([{ name: '', quantity: '1', rate: '' }]); else setCart([]); setCustomerName(''); setCustomerPhone(''); setDiscount('0'); setGstPercent('5'); setRoundOff(true); setGstInclusive(true);
       setMessage(isManual ? `Manual bill ${result.bill.invoiceNo} saved.` : `Bill ${result.bill.invoiceNo} saved. Stock has been updated.`); await load();
     } catch (e) { await load(); setError(e.message); }
     finally { setBusy(false); }
@@ -242,7 +247,7 @@ function App() {
           <aside className="panel checkout-panel"><div className="checkout-title"><div><p className="eyebrow">CHECKOUT</p><h3>Bill summary</h3></div><ReceiptText size={20}/></div>
             <label className="field-label">Customer name <span>OPTIONAL</span><input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in customer"/></label>
             <label className="field-label">Phone number <span>OPTIONAL</span><input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Customer phone" inputMode="tel"/></label>
-            <div className="summary-lines"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="discount-line"><label>Discount <span>(₹)</span></label><input type="number" min="0" max={subtotal} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="discount-line"><label>GST <span>(%)</span></label><input type="number" min="0" max="100" value={gstPercent} onChange={(e) => setGstPercent(e.target.value)} /></div><div><span>Tax</span><b>{money(tax)}</b></div></div>
+            <div className="summary-lines"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="discount-line"><label>Discount <span>(₹)</span></label><input type="number" min="0" max={subtotal} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="discount-line"><label>GST <span>(%)</span></label><input type="number" min="0" max="100" value={gstPercent} onChange={(e) => setGstPercent(e.target.value)} /></div><div className="check-line"><label><input type="checkbox" checked={gstInclusive} onChange={(e) => setGstInclusive(e.target.checked)} /> GST included in rate</label></div><div><span>{gstInclusive ? 'GST (included)' : 'Tax'}</span><b>{money(tax)}</b></div><div className="check-line"><label><input type="checkbox" checked={roundOff} onChange={(e) => setRoundOff(e.target.checked)} /> Round off to nearest ₹</label><b>{roundOffAmount > 0 ? '+' : ''}{roundOffAmount.toFixed(2)}</b></div></div>
             <div className="total-row"><span>Total payable</span><strong>{money(total)}</strong></div><div className="payment-form">
               <label className="field-label">Payment method<select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>{['Cash', 'UPI', 'Card', 'Bank transfer'].map(method => <option key={method}>{method}</option>)}</select></label>
               <label className="field-label">{paymentMethod === 'Cash' ? 'Cash received (₹)' : 'Amount received (₹)'}<input type="number" min="0" step="0.01" max="100000000" placeholder="Enter amount received" value={amountReceived} onChange={e => setAmountReceived(e.target.value)} /></label>
@@ -366,13 +371,14 @@ const receiptDate = (value) => new Date(value).toLocaleString('en-GB', { timeZon
 function Invoice({ bill }) {
   const items = bill.items || [];
   const qty = items.reduce((n, item) => n + (Number(item.quantity) || 0), 0);
-  const taxable = Math.round((Number(bill.subtotal || 0) - Number(bill.discount || 0)) * 100) / 100;
   const tax = Number(bill.tax) || 0;
+  const inclusive = bill.gstInclusive === true;
+  const taxable = bill.taxableValue != null ? Number(bill.taxableValue) : Math.round((Number(bill.subtotal || 0) - Number(bill.discount || 0)) * 100) / 100;
   const cgst = Math.round(tax * 100 / 2) / 100;
   const sgst = Math.round((tax - cgst) * 100) / 100;
   const method = bill.paymentMethod;
   const title = bill.status === 'Cancelled' ? 'CANCELLED BILL' : method ? `${method.toUpperCase()} BILL` : 'SALES INVOICE';
-  return <div className="invoice-paper receipt-style"><div className="invoice-brand"><span className="brand-mark"><Shirt size={20}/></span><div><h2>{SHOP.name}</h2><p className="shop-contact">{SHOP.address[0]}<br/>{SHOP.address[1]}</p><p className="shop-contact">{SHOP.phone}</p><p className="shop-contact gst-line">GST No : {SHOP.gstin}</p></div></div><p className="receipt-title">{title}</p><div className="invoice-meta"><div><span>Bill No</span><b>: {bill.invoiceNo}</b></div><div><span>Date</span><b>: {receiptDate(bill.createdAt)}</b></div><div><span>Customer</span><b>: {bill.customerName || 'Walk-in customer'}{bill.customerPhone ? ` (${bill.customerPhone})` : ''}</b></div></div><table className="invoice-items"><thead><tr><th>S No</th><th>Item Particulars</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{items.map((item, i) => <tr key={i}><td>{i + 1}</td><td>{item.name}{item.sku && <small>{item.sku}</small>}</td><td>{item.quantity}</td><td>{amt(item.unitPrice)}</td><td>{amt(item.lineTotal)}</td></tr>)}</tbody></table><div className="receipt-total"><span>Total : {qty}</span><b>{amt(bill.subtotal)}</b></div><div className="invoice-totals"><div><span>Basic Value</span><b>{amt(bill.subtotal)}</b></div>{bill.discount > 0 && <div><span>Discount</span><b>− {amt(bill.discount)}</b></div>}{bill.gstPercent > 0 && <div><span>GST ({bill.gstPercent}%)</span><b>{amt(tax)}</b></div>}<div className="invoice-grand"><span>Net Value</span><b>{amt(bill.total)}</b></div>{method ? <><div><span>{method} Value</span><b>{amt(bill.amountPaid)}</b></div><div><span>Tender Value</span><b>{amt(bill.amountReceived)}</b></div>{method === 'Cash' && bill.changeDue > 0 && <div><span>Change</span><b>{amt(bill.changeDue)}</b></div>}{bill.balanceDue > 0 && <div><span>Balance Due</span><b>{amt(bill.balanceDue)}</b></div>}</> : <div><span>Payment</span><b>Not recorded</b></div>}</div>{bill.gstPercent > 0 && <table className="tax-table"><thead><tr><th>Tax Name</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total</th></tr></thead><tbody><tr><td>GST {bill.gstPercent}%</td><td>{amt(taxable)}</td><td>{amt(cgst)}</td><td>{amt(sgst)}</td><td>{amt(tax)}</td></tr></tbody></table>}<p className="thankyou">THANK YOU..! VISIT AGAIN...!!!</p></div>;
+  return <div className="invoice-paper receipt-style"><div className="invoice-brand"><span className="brand-mark"><Shirt size={20}/></span><div><h2>{SHOP.name}</h2><p className="shop-contact">{SHOP.address[0]}<br/>{SHOP.address[1]}</p><p className="shop-contact">{SHOP.phone}</p><p className="shop-contact gst-line">GST No : {SHOP.gstin}</p></div></div><p className="receipt-title">{title}</p><div className="invoice-meta"><div><span>Bill No</span><b>: {bill.invoiceNo}</b></div><div><span>Date</span><b>: {receiptDate(bill.createdAt)}</b></div><div><span>Customer</span><b>: {bill.customerName || 'Walk-in customer'}{bill.customerPhone ? ` (${bill.customerPhone})` : ''}</b></div></div><table className="invoice-items"><thead><tr><th>S No</th><th>Item Particulars</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{items.map((item, i) => <tr key={i}><td>{i + 1}</td><td>{item.name}{item.sku && <small>{item.sku}</small>}</td><td>{item.quantity}</td><td>{amt(item.unitPrice)}</td><td>{amt(item.lineTotal)}</td></tr>)}</tbody></table><div className="receipt-total"><span>Total : {qty}</span><b>{amt(bill.subtotal)}</b></div><div className="invoice-totals"><div><span>Basic Value</span><b>{amt(bill.subtotal)}</b></div>{bill.discount > 0 && <div><span>Discount</span><b>− {amt(bill.discount)}</b></div>}{bill.gstPercent > 0 && !inclusive && <div><span>GST ({bill.gstPercent}%)</span><b>{amt(tax)}</b></div>}{Number(bill.roundOff) !== 0 && bill.roundOff != null && <div><span>Round Off</span><b>{Number(bill.roundOff) > 0 ? '+ ' : '− '}{amt(Math.abs(bill.roundOff))}</b></div>}<div className="invoice-grand"><span>Net Value</span><b>{amt(bill.total)}</b></div>{method ? <><div><span>{method} Value</span><b>{amt(bill.amountPaid)}</b></div><div><span>Tender Value</span><b>{amt(bill.amountReceived)}</b></div>{method === 'Cash' && bill.changeDue > 0 && <div><span>Change</span><b>{amt(bill.changeDue)}</b></div>}{bill.balanceDue > 0 && <div><span>Balance Due</span><b>{amt(bill.balanceDue)}</b></div>}</> : <div><span>Payment</span><b>Not recorded</b></div>}</div>{bill.gstPercent > 0 && <table className="tax-table"><thead><tr><th>Tax Name</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total</th></tr></thead><tbody><tr><td>GST {bill.gstPercent}%</td><td>{amt(taxable)}</td><td>{amt(cgst)}</td><td>{amt(sgst)}</td><td>{amt(tax)}</td></tr></tbody></table>}{inclusive && bill.gstPercent > 0 && <p className="incl-note">Inclusive of All Taxes</p>}<p className="thankyou">THANK YOU..! VISIT AGAIN...!!!</p></div>;
 }
 
 export default App;

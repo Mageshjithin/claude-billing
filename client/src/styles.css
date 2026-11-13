@@ -81,3 +81,6 @@
 .receipt-style .tax-table td{font-size:11px}
 .receipt-style .tax-table th:not(:first-child),.receipt-style .tax-table td:not(:first-child){text-align:right}
 .receipt-style .thankyou{font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:.3px;color:#111;margin:12px 0 0}
+.receipt-style .incl-note{text-align:center;font-weight:700;font-size:11px;margin:8px 0 0}
+.check-line label{display:flex;align-items:center;gap:8px;font-size:11px;color:#574e57;cursor:pointer}
+.check-line input[type=checkbox]{width:15px;height:15px;margin:0;padding:0;flex:none;accent-color:var(--plum)}

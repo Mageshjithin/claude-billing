@@ -35,6 +35,7 @@ const receiptCss = `
   .tax-table th { border: 0; border-bottom: 1px dashed black; }
   .tax-table th:not(:first-child), .tax-table td:not(:first-child) { text-align: right; }
   .thankyou { text-align: center; font-weight: 700; font-size: 10px; margin: 8px 0 0; }
+  .incl-note { text-align: center; font-weight: 700; font-size: 10px; margin: 6px 0 0; }
 `;
 
 export async function prepareReceiptPrint(receipt) {
