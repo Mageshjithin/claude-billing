@@ -75,8 +75,17 @@ router.post('/', async (req, res, next) => {
       if (!Number.isFinite(discount) || !Number.isFinite(gstPercent) || discount < 0 || discount > subtotal || gstPercent < 0 || gstPercent > 100) {
         throw httpError(400, 'Discount or GST value is outside the allowed range.');
       }
-      const tax = money((subtotal - discount) * gstPercent / 100);
-      const total = money(subtotal - discount + tax);
+      // GST is included in the item rates by default (gstInclusive): the customer pays rate x qty - discount,
+      // and the GST inside it is shown in the tax table. gstInclusive=false adds GST on top instead.
+      const gstInclusive = req.body.gstInclusive !== false && req.body.gstInclusive !== 'false';
+      const net = money(subtotal - discount);
+      const tax = gstInclusive ? money(net - net / (1 + gstPercent / 100)) : money(net * gstPercent / 100);
+      const taxableValue = gstInclusive ? money(net - tax) : net;
+      const exactTotal = gstInclusive ? net : money(net + tax);
+      // Round off to the nearest rupee by default (892.50 -> 893.00); the cashier can switch it off per bill.
+      const roundOffOn = req.body.roundOff !== false && req.body.roundOff !== 'false';
+      const total = roundOffOn ? Math.round(exactTotal) : exactTotal;
+      const roundOff = money(total - exactTotal);
       let payment;
       try { payment = calculatePayment(total, req.body.paymentMethod, req.body.amountReceived); }
       catch (error) { throw httpError(400, error.message); }
@@ -100,7 +109,10 @@ router.post('/', async (req, res, next) => {
         subtotal,
         discount,
         gstPercent,
+        gstInclusive,
+        taxableValue,
         tax,
+        roundOff,
         total,
         ...payment,
         createdAt: now,

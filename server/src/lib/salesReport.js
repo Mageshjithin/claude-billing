@@ -4,6 +4,9 @@ export const istDate = (value) => {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? new Date(date.getTime() + 330 * 60000).toISOString().slice(0, 10) : '';
 };
+// Taxable value = amount after discount, before GST. Bills with GST included in the rate store it as
+// taxableValue; older bills (GST added on top) have it as subtotal - discount.
+const taxableCents = (bill) => bill.taxableValue != null ? cents(bill.taxableValue) : cents(bill.subtotal) - cents(bill.discount);
 // Profit = amount after discount (before GST) minus the cost of the items sold. A bill's profit is
 // unknown (null) when any item has no cost: manual-billing items, or products without a cost price.
 // Items use the cost saved on the bill at sale time, else the product's current cost price.
@@ -16,7 +19,7 @@ const profitCentsOf = (bill, costById) => {
     if (typeof saved !== 'number' || !Number.isFinite(saved)) return null;
     cost += Math.round(saved * 100) * (Number(item.quantity) || 0);
   }
-  return cents(bill.subtotal) - cents(bill.discount) - cost;
+  return taxableCents(bill) - cost;
 };
 export function salesReport(bills, query = {}, products = []) {
   const costById = new Map(products.map(p => [p._id, p.costPrice]));
@@ -44,7 +47,7 @@ export function salesReport(bills, query = {}, products = []) {
   }).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b._id).localeCompare(String(a._id)));
   const groups = new Map();
   const paymentGroups = new Map();
-  const summary = { billCount: 0, items: 0, subtotal: 0, discount: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0 };
+  const summary = { billCount: 0, items: 0, subtotal: 0, discount: 0, taxable: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0 };
   for (const bill of matching) {
     if (bill.status === 'Cancelled') continue; // voided bills stay listed but never count as sales
     const method = methodOf(bill);
@@ -54,21 +57,21 @@ export function salesReport(bills, query = {}, products = []) {
     paymentGroups.set(method, paymentGroup);
     const date = istDate(bill.createdAt);
     const key = mode === 'year' ? date.slice(0,7) : mode === 'all' ? date.slice(0,4) : date;
-    const group = groups.get(key) || { period: key || 'Unknown date', billCount: 0, items: 0, subtotal: 0, discount: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0 };
+    const group = groups.get(key) || { period: key || 'Unknown date', billCount: 0, items: 0, subtotal: 0, discount: 0, taxable: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0 };
     const profit = profitCentsOf(bill, costById);
     const known = profit !== null;
-    const values = {profit: known ? profit : 0, profitSales: known ? cents(bill.subtotal) - cents(bill.discount) : 0, profitBills: known ? 1 : 0, billCount: 1, items: (bill.items || []).reduce((n,item) => n + (Number(item.quantity)||0),0), subtotal:cents(bill.subtotal), discount:cents(bill.discount), tax:cents(bill.tax), sales:cents(bill.total)};
+    const values = {profit: known ? profit : 0, profitSales: known ? taxableCents(bill) : 0, profitBills: known ? 1 : 0, billCount: 1, items: (bill.items || []).reduce((n,item) => n + (Number(item.quantity)||0),0), subtotal:cents(bill.subtotal), discount:cents(bill.discount), taxable:taxableCents(bill), tax:cents(bill.tax), sales:cents(bill.total)};
     for (const [k,v] of Object.entries(values)) {summary[k] += v; group[k] += v;}
     groups.set(key,group);
   }
-  const amounts = row => {for (const key of ['subtotal','discount','tax','sales','profit','profitSales']) row[key] /= 100;return row;};
+  const amounts = row => {for (const key of ['subtotal','discount','taxable','tax','sales','profit','profitSales']) row[key] /= 100;return row;};
   const totalPages = Math.max(1,Math.ceil(matching.length / limit));
   const page = Math.min(requestedPage,totalPages);
   const marginOf = (profit, sales) => sales > 0 ? Math.round(profit / sales * 1000) / 10 : null;
   const billsPage = matching.slice((page-1)*limit,page*limit).map(b => {
     const profit = b.status === 'Cancelled' ? null : profitCentsOf(b, costById);
     if (profit === null) return {...b, profit: null, profitMargin: null};
-    return {...b, profit: profit / 100, profitMargin: marginOf(profit, cents(b.subtotal) - cents(b.discount))};
+    return {...b, profit: profit / 100, profitMargin: marginOf(profit, taxableCents(b))};
   });
   amounts(summary);
   summary.profitMargin = marginOf(summary.profit, summary.profitSales);

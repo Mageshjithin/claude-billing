@@ -6,6 +6,9 @@ A React + Vite billing and stock app with an Express + Node.js API that stores d
 
 - Scan a product barcode/QR code with a phone camera or USB/Bluetooth scanner (the scanner types into the focused barcode field and sends Enter), or search by name/SKU. Camera access requires permission and HTTPS (or localhost).
 - Add items to a bill, adjust quantities, set an optional discount and GST percentage, and save the sale.
+- GST is included in the item rate by default (the customer pays rate x qty - discount; the GST inside it is shown in the tax table and the receipt says "Inclusive of All Taxes"). Untick **GST included in rate** to add GST on top instead.
+- Bill totals are rounded off to the nearest rupee by default, shown as **Round Off** on the receipt. Untick it per bill to keep paise.
+- GST reports for accounts: a daily JSON summary and a monthly Excel workbook (daily rows + monthly summary), protected by `REPORT_TOKEN`.
 - Invoice numbers use the format `JMS-YYYYMMDD-N`; the final number starts at 1 and increments across days.
 - Stock is checked and decremented on the server when a bill is saved. The invoice has a printable layout.
 - Add and edit products, including SKU, barcode, price and opening stock.
@@ -49,6 +52,7 @@ Requirements: Node.js 20+ and a Postgres database (a free [Neon](https://neon.te
 - `GET /api/products?search=` · `POST /api/products` · `PATCH /api/products/:id` (supports `stockDelta`) · `DELETE /api/products/:id`
 - `GET /api/bills` (filters: mode, period, paymentMethod, search, page, limit) · `POST /api/bills` · `POST /api/bills/:id/void`
 - `GET /api/dashboard/summary`
+- `GET /api/reports/daily?token=...&date=YYYY-MM-DD` (default: yesterday, IST) · `GET /api/reports/gst.xlsx?token=...&month=YYYY-MM` — need `REPORT_TOKEN` (24+ characters); disabled when it is not set
 
 ## Notes
 
