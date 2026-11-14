@@ -85,3 +85,11 @@
 .check-line label{display:flex;align-items:center;gap:8px;font-size:11px;color:#574e57;cursor:pointer}
 .check-line input[type=checkbox]{width:15px;height:15px;margin:0;padding:0;flex:none;accent-color:var(--plum)}
 .role-chip{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:999px;background:var(--rose);color:var(--plum);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.inventory-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:14px 0}
+.inventory-summary>div{border:1px solid var(--line,#eadfe6);border-radius:14px;padding:12px 14px;background:#fbf8fa;display:flex;flex-direction:column;gap:4px}
+.inventory-summary span{font-size:11px;color:#7a6f78}
+.inventory-summary b{font-size:18px;color:var(--plum)}
+.inventory-summary small{font-size:11px;color:#7a6f78}
+.inventory-total td{border-top:2px solid var(--line,#eadfe6);background:#fbf8fa}
+@media (max-width:900px){.inventory-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
