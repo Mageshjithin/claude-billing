@@ -36,6 +36,9 @@ test('expenses: admin can add, list by month, edit and delete; staff cannot see 
     assert.equal(rent.status, 201);
     await call('POST', '/expenses', admin, { date: '2026-11-12', description: 'Inverter', category: 'Equipment', amount: 10000, note: 'Balance 10000 to pay' });
     await call('POST', '/expenses', admin, { date: '2026-10-27', description: 'Lock', category: 'Shop supplies', amount: 428 });
+    const stock = await call('POST', '/expenses', admin, { date: '2026-09-15', description: 'Saree stock from supplier', category: 'Stock', amount: 50000 });
+    assert.equal(stock.data.expense.category, 'Stock');
+    assert.ok((await call('GET', '/expenses', admin)).data.categories.includes('Stock'));
     assert.equal((await call('POST', '/expenses', admin, { date: '2026-11-01', description: 'x', amount: 0 })).status, 400);
     assert.equal((await call('POST', '/expenses', admin, { date: 'bad', description: 'x', amount: 5 })).status, 400);
 
@@ -44,7 +47,7 @@ test('expenses: admin can add, list by month, edit and delete; staff cannot see 
     assert.equal(nov.expenses.length, 2);
     assert.equal(nov.expenses[0].description, 'Inverter', 'newest first');
     assert.deepEqual(nov.byCategory.map((c) => c.category), ['Rent', 'Equipment']);
-    assert.equal((await call('GET', '/expenses', admin)).data.summary.total, 35428);
+    assert.equal((await call('GET', '/expenses', admin)).data.summary.total, 85428);
 
     const edited = await call('PATCH', `/expenses/${rent.data.expense._id}`, admin, { status: 'Pending' });
     assert.equal(edited.data.expense.status, 'Pending');

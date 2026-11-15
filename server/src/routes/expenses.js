@@ -5,7 +5,7 @@ import { loadData, transaction, httpError } from '../db.js';
 // Shop expenses (rent, EB, transport, purchases...), kept apart from sales. Admin only (mounted behind requireAdmin).
 const router = Router();
 
-export const EXPENSE_CATEGORIES = ['Rent', 'Electricity (EB)', 'Transport', 'Shop supplies', 'Equipment', 'GST / Tax', 'Salary', 'Other'];
+export const EXPENSE_CATEGORIES = ['Stock', 'Rent', 'Electricity (EB)', 'Transport', 'Shop supplies', 'Equipment', 'GST / Tax', 'Salary', 'Other'];
 const STATUSES = ['Paid', 'Pending'];
 const money = (value) => Math.round(Number(value) * 100) / 100;
 const isDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
