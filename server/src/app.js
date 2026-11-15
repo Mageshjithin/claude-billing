@@ -11,6 +11,7 @@ import { buildGstWorkbook, monthToDate, daysInMonth } from './lib/gstExcel.js';
 import productsRouter from './routes/products.js';
 import billsRouter from './routes/bills.js';
 import dashboardRouter from './routes/dashboard.js';
+import expensesRouter from './routes/expenses.js';
 import { requireAdmin } from './lib/roles.js';
 
 const app = express();
@@ -128,6 +129,7 @@ app.use('/api', (req, res, next) => {
 app.use('/api/products', productsRouter);
 app.use('/api/bills', billsRouter);
 app.use('/api/dashboard', requireAdmin, dashboardRouter);
+app.use('/api/expenses', requireAdmin, expensesRouter);
 app.use((req, res) => res.status(404).json({ message: `Route not found: ${req.method} ${req.path}` }));
 app.use((error, _req, res, _next) => {
   if (!error.status || error.status >= 500) console.error(error);
