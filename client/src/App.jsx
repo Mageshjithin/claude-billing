@@ -44,9 +44,11 @@ function App() {
   const [products, setProducts] = useState([]);
   const [bills, setBills] = useState([]);
   const [cart, setCart] = useState([]);
-  const [manualCart, setManualCart] = useState([{ name: '', quantity: '1', rate: '' }]);
+  // One shared bill for both billing screens: inventory items (cart, stock goes down) plus manual lines.
+  const [manualCart, setManualCart] = useState([]);
   const isManual = page === 'Billing option';
-  const billItems = isManual ? manualCart : cart;
+  const manualFilled = manualCart.filter(item => item.name.trim() || String(item.rate).trim());
+  const billItems = [...cart, ...manualFilled];
   const [search, setSearch] = useState('');
   const [barcode, setBarcode] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -89,9 +91,9 @@ function App() {
   // Staff never stay on an admin-only page (e.g. after switching accounts).
   useEffect(() => { if (!(isAdmin ? ADMIN_PAGES : USER_PAGES).includes(page)) setPage(isAdmin ? 'Overview' : 'New bill'); }, [isAdmin, page]);
 
-  const subtotal = useMemo(() => isManual
-    ? manualCart.reduce((sum, row) => sum + Math.round((Number(row.rate) || 0) * 100) * (Number(row.quantity) || 0), 0) / 100
-    : cart.reduce((sum, row) => sum + Math.round(row.price * row.quantity * 100), 0) / 100, [cart, manualCart, isManual]);
+  const subtotal = useMemo(() => (
+    manualCart.reduce((sum, row) => sum + Math.round((Number(row.rate) || 0) * 100) * (Number(row.quantity) || 0), 0)
+    + cart.reduce((sum, row) => sum + Math.round(row.price * row.quantity * 100), 0)) / 100, [cart, manualCart]);
   const safeDiscount = Math.round(Math.min(Math.max(Number(discount) || 0, 0), subtotal) * 100) / 100;
   const taxable = Math.max(0, subtotal - safeDiscount);
   const gstRate = Math.max(0, Number(gstPercent) || 0);
@@ -149,10 +151,24 @@ function App() {
     setCart((current) => current.map((x) => x._id === id ? { ...x, quantity: Math.min(x.stock, Math.max(1, amount)) } : x));
   }
 
+  // A typed manual line that is really an inventory product: move it to the inventory items so stock updates.
+  function useInventoryFor(index, product) {
+    const row = manualCart[index];
+    const wanted = Math.max(1, Math.floor(Number(row?.quantity) || 1));
+    const inCart = cart.find(x => x._id === product._id)?.quantity || 0;
+    const quantity = Math.min(product.stock, inCart + wanted);
+    if (quantity <= inCart) { setError(`Only ${product.stock} in stock for ${product.name}.`); return; }
+    setCart(current => current.some(x => x._id === product._id)
+      ? current.map(x => x._id === product._id ? { ...x, quantity } : x)
+      : [...current, { ...product, quantity, price: Number(product.price) }]);
+    setManualCart(current => current.filter((_, i) => i !== index));
+    setError(''); setMessage(quantity - inCart < wanted ? `Added ${quantity - inCart} of ${product.name} (only ${product.stock} in stock).` : `${product.name} added from inventory. Stock will update when the bill is saved.`);
+  }
+
   async function saveBill() {
     if (busy) return;
-    if (!billItems.length) { setError(isManual ? 'Add at least one manual item.' : 'Scan or select products before saving the bill.'); return; }
-    if (isManual && manualCart.some(item => !item.name.trim() || item.name.trim().length > 120 || !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) < 1 || Number(item.quantity) > 1000000 || item.rate.trim() === '' || !Number.isFinite(Number(item.rate)) || Number(item.rate) < 0 || Number(item.rate) > 100000000 || Math.abs(Number(item.rate) * 100 - Math.round(Number(item.rate) * 100)) > 0.00001 || Math.round(Number(item.rate) * 100) * Number(item.quantity) > 10000000000)) {
+    if (!billItems.length) { setError('Scan or select products, or add a manual item, before saving the bill.'); return; }
+    if (manualFilled.some(item => !item.name.trim() || item.name.trim().length > 120 || !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) < 1 || Number(item.quantity) > 1000000 || item.rate.trim() === '' || !Number.isFinite(Number(item.rate)) || Number(item.rate) < 0 || Number(item.rate) > 100000000 || Math.abs(Number(item.rate) * 100 - Math.round(Number(item.rate) * 100)) > 0.00001 || Math.round(Number(item.rate) * 100) * Number(item.quantity) > 10000000000)) {
       setError('Enter an item name, positive whole-number quantity and valid rate with up to two decimal places for every item.'); return;
     }
     if (paymentError) { setError(paymentError); return; }
@@ -160,11 +176,11 @@ function App() {
     try {
       const result = await request('/bills', { method: 'POST', body: JSON.stringify({
         customerName: customerName || 'Walk-in customer', customerPhone, discount: safeDiscount, paymentMethod, amountReceived: received,
-        billingMode: isManual ? 'manual' : 'inventory',
-        gstPercent: Math.max(0, Number(gstPercent) || 0), gstInclusive, roundOff, items: isManual ? manualCart.map(item => ({ name: item.name.trim(), quantity: Number(item.quantity), rate: Number(item.rate) })) : cart.map((x) => ({ productId: x._id, quantity: x.quantity })),
+        billingMode: 'mixed',
+        gstPercent: Math.max(0, Number(gstPercent) || 0), gstInclusive, roundOff, items: [...cart.map((x) => ({ productId: x._id, quantity: x.quantity })), ...manualFilled.map(item => ({ name: item.name.trim(), quantity: Number(item.quantity), rate: Number(item.rate) }))],
       }) });
-      setLastBill(result.bill); setAmountReceived(''); setPaymentMethod('Cash'); if (isManual) setManualCart([{ name: '', quantity: '1', rate: '' }]); else setCart([]); setCustomerName(''); setCustomerPhone(''); setDiscount('0'); setGstPercent('5'); setRoundOff(true); setGstInclusive(true);
-      setMessage(isManual ? `Manual bill ${result.bill.invoiceNo} saved.` : `Bill ${result.bill.invoiceNo} saved. Stock has been updated.`); await load();
+      setLastBill(result.bill); setAmountReceived(''); setPaymentMethod('Cash'); setManualCart([]); setCart([]); setCustomerName(''); setCustomerPhone(''); setDiscount('0'); setGstPercent('5'); setRoundOff(true); setGstInclusive(true);
+      setMessage(cart.length ? `Bill ${result.bill.invoiceNo} saved. Stock has been updated.` : `Bill ${result.bill.invoiceNo} saved (manual items only, stock unchanged).`); await load();
     } catch (e) { await load(); setError(e.message); }
     finally { setBusy(false); }
   }
@@ -227,6 +243,15 @@ function App() {
     finally { setBusy(false); }
   }
 
+  const inventorySection = <section className="panel bill-left"><div className="panel-heading"><div><h3>Items</h3><p>Scan a barcode or find a product</p></div><span className="soft-count">{cart.reduce((a, b) => a + b.quantity, 0)} items</span></div>
+            <form className="scan-box" style={{ height: 'auto', minHeight: 46, flexWrap: 'wrap', padding: '8px 10px' }} onSubmit={scanBarcode}><QrCode size={19}/><input ref={barcodeRef} style={{ flex: '1 1 180px' }} value={barcode} onChange={(e) => { setBarcode(e.target.value); setSearch(''); setError(''); }} aria-label="Barcode or product search" placeholder="Scan or search barcode, SKU or product name" autoFocus/><button type="button" className="camera-scan-button" aria-label="Scan with camera" onClick={() => setShowCameraScanner(true)}><Camera size={15}/><span>Camera</span></button><button type="button" aria-label="Search barcode or product" onClick={() => { setSearch(''); setError(''); barcodeRef.current?.focus(); }}><Search size={15}/> Search</button><button type="submit">Add</button></form>
+            <div className="search-field"><Search size={17}/><input value={search} onChange={(e) => { setSearch(e.target.value); setBarcode(''); setError(''); }} aria-label="Search products" placeholder="Search product name, SKU or barcode"/></div>
+            {(barcode || search) && <div className="panel-heading"><span className="soft-count" role="status">{filtered.length} matching products</span><button type="button" className="text-button" onClick={() => { setBarcode(''); setSearch(''); setError(''); }}>Clear search</button></div>}
+            <div className="product-picker">{filtered.map((p) => <button className="picker-row" key={p._id} onClick={() => { addToCart(p); setBarcode(''); setSearch(''); barcodeRef.current?.focus(); }} disabled={!p.stock}><span className="fabric-swatch">{p.name.slice(0, 1).toUpperCase()}</span><span className="picker-name"><b>{p.name}</b><small>{p.sku} · {p.barcode || 'No barcode'} · {p.category}</small></span><span className="picker-price"><b>{money(p.price)}</b><small>{p.stock} in stock</small></span><Plus size={17}/></button>)}{!filtered.length && <div className="empty-state">No matching products. Add them from Inventory.</div>}</div>
+            <div className="cart-heading"><h3>Bill items</h3><button className="text-button" onClick={() => setCart([])} disabled={!cart.length}><Trash2 size={14}/> Clear</button></div>
+            <div className="cart-list">{cart.map((item) => <div className="cart-row" key={item._id}><span className="fabric-swatch small">{item.name.slice(0, 1).toUpperCase()}</span><span className="cart-name"><b>{item.name}</b><small>{money(item.price)} each</small></span><div className="qty-control"><button onClick={() => setQuantity(item._id, item.quantity - 1)}><Minus size={13}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item._id, item.quantity + 1)}><Plus size={13}/></button></div><b className="line-total">{money(item.price * item.quantity)}</b><button className="icon-button remove" onClick={() => setCart((c) => c.filter((x) => x._id !== item._id))}><Trash2 size={16}/></button></div>)}{!cart.length && <div className="empty-cart"><ShoppingBag size={23}/><b>No items yet</b><span>Scan a product barcode or select one above.</span></div>}</div>
+          </section>;
+
   if (!loggedIn) return <Login onLogin={(newRole) => { setRole(newRole); setPage(newRole === 'user' ? 'New bill' : 'Overview'); setLoggedIn(true); setError(''); }} />;
 
   return <div className="app-shell">
@@ -260,14 +285,7 @@ function App() {
         </>}
 
         {(page === 'New bill' || isManual) && <div className="billing-layout">
-          {isManual ? <ManualItems items={manualCart} onChange={setManualCart} busy={busy} /> : <section className="panel bill-left"><div className="panel-heading"><div><h3>Items</h3><p>Scan a barcode or find a product</p></div><span className="soft-count">{cart.reduce((a, b) => a + b.quantity, 0)} items</span></div>
-            <form className="scan-box" style={{ height: 'auto', minHeight: 46, flexWrap: 'wrap', padding: '8px 10px' }} onSubmit={scanBarcode}><QrCode size={19}/><input ref={barcodeRef} style={{ flex: '1 1 180px' }} value={barcode} onChange={(e) => { setBarcode(e.target.value); setSearch(''); setError(''); }} aria-label="Barcode or product search" placeholder="Scan or search barcode, SKU or product name" autoFocus/><button type="button" className="camera-scan-button" aria-label="Scan with camera" onClick={() => setShowCameraScanner(true)}><Camera size={15}/><span>Camera</span></button><button type="button" aria-label="Search barcode or product" onClick={() => { setSearch(''); setError(''); barcodeRef.current?.focus(); }}><Search size={15}/> Search</button><button type="submit">Add</button></form>
-            <div className="search-field"><Search size={17}/><input value={search} onChange={(e) => { setSearch(e.target.value); setBarcode(''); setError(''); }} aria-label="Search products" placeholder="Search product name, SKU or barcode"/></div>
-            {(barcode || search) && <div className="panel-heading"><span className="soft-count" role="status">{filtered.length} matching products</span><button type="button" className="text-button" onClick={() => { setBarcode(''); setSearch(''); setError(''); }}>Clear search</button></div>}
-            <div className="product-picker">{filtered.map((p) => <button className="picker-row" key={p._id} onClick={() => { addToCart(p); setBarcode(''); setSearch(''); barcodeRef.current?.focus(); }} disabled={!p.stock}><span className="fabric-swatch">{p.name.slice(0, 1).toUpperCase()}</span><span className="picker-name"><b>{p.name}</b><small>{p.sku} · {p.barcode || 'No barcode'} · {p.category}</small></span><span className="picker-price"><b>{money(p.price)}</b><small>{p.stock} in stock</small></span><Plus size={17}/></button>)}{!filtered.length && <div className="empty-state">No matching products. Add them from Inventory.</div>}</div>
-            <div className="cart-heading"><h3>Bill items</h3><button className="text-button" onClick={() => setCart([])} disabled={!cart.length}><Trash2 size={14}/> Clear</button></div>
-            <div className="cart-list">{cart.map((item) => <div className="cart-row" key={item._id}><span className="fabric-swatch small">{item.name.slice(0, 1).toUpperCase()}</span><span className="cart-name"><b>{item.name}</b><small>{money(item.price)} each</small></span><div className="qty-control"><button onClick={() => setQuantity(item._id, item.quantity - 1)}><Minus size={13}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item._id, item.quantity + 1)}><Plus size={13}/></button></div><b className="line-total">{money(item.price * item.quantity)}</b><button className="icon-button remove" onClick={() => setCart((c) => c.filter((x) => x._id !== item._id))}><Trash2 size={16}/></button></div>)}{!cart.length && <div className="empty-cart"><ShoppingBag size={23}/><b>No items yet</b><span>Scan a product barcode or select one above.</span></div>}</div>
-          </section>}
+          {isManual ? <div className="bill-stack"><ManualItems items={manualCart} onChange={setManualCart} busy={busy} products={products} onUseProduct={useInventoryFor} />{inventorySection}</div> : <div className="bill-stack">{inventorySection}<ManualItems items={manualCart} onChange={setManualCart} busy={busy} products={products} onUseProduct={useInventoryFor} /></div>}
           <aside className="panel checkout-panel"><div className="checkout-title"><div><p className="eyebrow">CHECKOUT</p><h3>Bill summary</h3></div><ReceiptText size={20}/></div>
             <label className="field-label">Customer name <span>OPTIONAL</span><input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in customer"/></label>
             <label className="field-label">Phone number <span>OPTIONAL</span><input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Customer phone" inputMode="tel"/></label>
@@ -281,7 +299,7 @@ function App() {
                 <div><span>Balance due</span><b>{money(balanceDue)}</b></div>
                 <div><span>Status</span><b>{balanceDue === 0 ? 'Paid' : received > 0 ? 'Partially paid' : 'Unpaid'}</b></div>
               </>}{amountReceived !== '' && paymentError && <p role="alert">{paymentError}</p>}</div>
-            </div><button className="primary save-bill" onClick={saveBill} disabled={busy || !billItems.length}>{busy ? <LoaderCircle className="spin" size={18}/> : <Check size={18}/>} {busy ? 'Saving bill…' : 'Save bill'}</button><p className="checkout-foot"><Check size={14}/> {isManual ? 'Manual bill will be saved to sales history' : 'Stock will update after this bill is saved'}</p>
+            </div><button className="primary save-bill" onClick={saveBill} disabled={busy || !billItems.length}>{busy ? <LoaderCircle className="spin" size={18}/> : <Check size={18}/>} {busy ? 'Saving bill…' : 'Save bill'}</button><p className="checkout-foot"><Check size={14}/> {cart.length ? 'Stock will update for inventory items when this bill is saved' : 'Manual items are saved to Sales; stock is not changed'}</p>
           </aside>
         </div>}
 
