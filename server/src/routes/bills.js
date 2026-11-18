@@ -44,14 +44,21 @@ router.post('/:id/void', requireAdmin, async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const billingMode = req.body.billingMode ?? 'inventory';
-    if (!['inventory', 'manual'].includes(billingMode)) throw httpError(400, 'Choose a valid billing mode.');
+    const requestedMode = req.body.billingMode ?? 'inventory';
+    if (!['inventory', 'manual', 'mixed'].includes(requestedMode)) throw httpError(400, 'Choose a valid billing mode.');
     const requested = Array.isArray(req.body.items) ? req.body.items : [];
     if (!requested.length) return res.status(400).json({ message: 'Add at least one product to the bill.' });
+    if (requested.length > 200) throw httpError(400, 'A bill can have at most 200 lines.');
 
-    const enteredItems = billingMode === 'manual' ? manualItems(requested) : [];
+    // One bill can mix inventory items (with productId: stock goes down) and manual items
+    // (name + rate, for things not in inventory: stock is not touched). 'manual' keeps the old all-manual behaviour.
+    const isInventoryLine = (item) => requestedMode !== 'manual' && item && typeof item === 'object' && 'productId' in item;
+    const inventoryLines = requested.filter(isInventoryLine);
+    const manualLines = requested.filter((item) => !isInventoryLine(item));
+    const enteredItems = manualLines.length ? manualItems(manualLines) : [];
+    const billingMode = !manualLines.length ? 'inventory' : !inventoryLines.length ? 'manual' : 'mixed';
     const quantities = new Map();
-    for (const item of billingMode === 'manual' ? [] : requested) {
+    for (const item of inventoryLines) {
       if (typeof item.productId !== 'string' || !item.productId || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1) {
         return res.status(400).json({ message: 'Each item needs a valid product and whole-number quantity.' });
       }
