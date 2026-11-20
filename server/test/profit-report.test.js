@@ -94,13 +94,15 @@ test('saving a bill stores each product cost on its items', async () => {
     const items = (await res.json()).bill.items;
     assert.equal(items.find(i => i.productId === 'p1').unitCost, 650.5);
     assert.equal('unitCost' in items.find(i => i.productId === 'p2'), false, 'no cost saved when the product has none');
-    // The report treats the bill as unknown because one product has no cost.
+    // One product has no cost: profit is partial, counting only the costed item's share (2000 of 2500).
     const report = await (await fetch(base)).json();
-    assert.equal(report.bills[0].profit, null);
+    assert.equal(report.bills[0].profit, 2000 - 2 * 650.5);
+    assert.equal(report.bills[0].profitPartial, true);
     // Give the second product a cost: profit becomes known using the saved cost for p1.
     globalThis.profitTestStore.products[1].costPrice = 300;
     const after = await (await fetch(base)).json();
     assert.equal(after.bills[0].profit, 2500 - 2 * 650.5 - 300);
+    assert.equal(after.bills[0].profitPartial, false);
   } finally {
     server.close();
     hooks.deregister();

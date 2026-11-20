@@ -7,19 +7,28 @@ export const istDate = (value) => {
 // Taxable value = amount after discount, before GST. Bills with GST included in the rate store it as
 // taxableValue; older bills (GST added on top) have it as subtotal - discount.
 const taxableCents = (bill) => bill.taxableValue != null ? cents(bill.taxableValue) : cents(bill.subtotal) - cents(bill.discount);
-// Profit = amount after discount (before GST) minus the cost of the items sold. A bill's profit is
-// unknown (null) when any item has no cost: manual-billing items, or products without a cost price.
-// Items use the cost saved on the bill at sale time, else the product's current cost price.
-const profitCentsOf = (bill, costById) => {
+// Profit = amount after discount (before GST) minus the cost of the items sold.
+// Only items with a known cost count: inventory items (cost saved on the bill at sale time, else the
+// product's current cost price). Manual items have no cost, so a bill mixing both gets a PARTIAL profit:
+// the costed items' share of the taxable value (by their line totals, so discount and GST are shared
+// fairly) minus their cost. A bill with no costed item has unknown profit (null).
+const profitOf = (bill, costById) => {
   const items = bill.items || [];
-  if (!items.length) return null;
-  let cost = 0;
+  let cost = 0, costedLines = 0, allLines = 0, costed = 0;
   for (const item of items) {
+    const quantity = Number(item.quantity) || 0;
+    const line = item.lineTotal != null ? cents(item.lineTotal) : cents(item.unitPrice) * quantity;
+    allLines += line;
     const saved = item.unitCost ?? (item.productId ? costById.get(item.productId) : undefined);
-    if (typeof saved !== 'number' || !Number.isFinite(saved)) return null;
-    cost += Math.round(saved * 100) * (Number(item.quantity) || 0);
+    if (typeof saved !== 'number' || !Number.isFinite(saved)) continue;
+    cost += Math.round(saved * 100) * quantity;
+    costedLines += line;
+    costed += 1;
   }
-  return taxableCents(bill) - cost;
+  if (!costed) return null;
+  const taxable = taxableCents(bill);
+  const profitSales = costed === items.length || allLines <= 0 ? taxable : Math.round(taxable * costedLines / allLines);
+  return { profit: profitSales - cost, profitSales, partial: costed < items.length, uncostedItems: items.length - costed };
 };
 export function salesReport(bills, query = {}, products = []) {
   const costById = new Map(products.map(p => [p._id, p.costPrice]));
@@ -47,7 +56,7 @@ export function salesReport(bills, query = {}, products = []) {
   }).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b._id).localeCompare(String(a._id)));
   const groups = new Map();
   const paymentGroups = new Map();
-  const summary = { billCount: 0, items: 0, subtotal: 0, discount: 0, taxable: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0 };
+  const summary = { billCount: 0, items: 0, subtotal: 0, discount: 0, taxable: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0, partialProfitBills: 0 };
   for (const bill of matching) {
     if (bill.status === 'Cancelled') continue; // voided bills stay listed but never count as sales
     const method = methodOf(bill);
@@ -57,10 +66,10 @@ export function salesReport(bills, query = {}, products = []) {
     paymentGroups.set(method, paymentGroup);
     const date = istDate(bill.createdAt);
     const key = mode === 'year' ? date.slice(0,7) : mode === 'all' ? date.slice(0,4) : date;
-    const group = groups.get(key) || { period: key || 'Unknown date', billCount: 0, items: 0, subtotal: 0, discount: 0, taxable: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0 };
-    const profit = profitCentsOf(bill, costById);
-    const known = profit !== null;
-    const values = {profit: known ? profit : 0, profitSales: known ? taxableCents(bill) : 0, profitBills: known ? 1 : 0, billCount: 1, items: (bill.items || []).reduce((n,item) => n + (Number(item.quantity)||0),0), subtotal:cents(bill.subtotal), discount:cents(bill.discount), taxable:taxableCents(bill), tax:cents(bill.tax), sales:cents(bill.total)};
+    const group = groups.get(key) || { period: key || 'Unknown date', billCount: 0, items: 0, subtotal: 0, discount: 0, taxable: 0, tax: 0, sales: 0, profit: 0, profitSales: 0, profitBills: 0, partialProfitBills: 0 };
+    const p = profitOf(bill, costById);
+    const known = p !== null;
+    const values = {profit: known ? p.profit : 0, profitSales: known ? p.profitSales : 0, profitBills: known ? 1 : 0, partialProfitBills: known && p.partial ? 1 : 0, billCount: 1, items: (bill.items || []).reduce((n,item) => n + (Number(item.quantity)||0),0), subtotal:cents(bill.subtotal), discount:cents(bill.discount), taxable:taxableCents(bill), tax:cents(bill.tax), sales:cents(bill.total)};
     for (const [k,v] of Object.entries(values)) {summary[k] += v; group[k] += v;}
     groups.set(key,group);
   }
@@ -69,9 +78,9 @@ export function salesReport(bills, query = {}, products = []) {
   const page = Math.min(requestedPage,totalPages);
   const marginOf = (profit, sales) => sales > 0 ? Math.round(profit / sales * 1000) / 10 : null;
   const billsPage = matching.slice((page-1)*limit,page*limit).map(b => {
-    const profit = b.status === 'Cancelled' ? null : profitCentsOf(b, costById);
-    if (profit === null) return {...b, profit: null, profitMargin: null};
-    return {...b, profit: profit / 100, profitMargin: marginOf(profit, taxableCents(b))};
+    const p = b.status === 'Cancelled' ? null : profitOf(b, costById);
+    if (p === null) return {...b, profit: null, profitMargin: null, profitPartial: false, uncostedItems: (b.items || []).length};
+    return {...b, profit: p.profit / 100, profitMargin: marginOf(p.profit, p.profitSales), profitPartial: p.partial, uncostedItems: p.uncostedItems};
   });
   amounts(summary);
   summary.profitMargin = marginOf(summary.profit, summary.profitSales);
